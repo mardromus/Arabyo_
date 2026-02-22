@@ -151,6 +151,12 @@ def create_app():
     @app.before_request
     def require_auth():
         if FIREBASE_AUTH_DISABLED:
+            # Auto-inject a default session user so the app works without login
+            if 'user' not in session:
+                role = request.args.get('role', 'admin')
+                if role not in ('admin', 'analyst', 'risk_manager', 'auditor'):
+                    role = 'admin'
+                session['user'] = {'email': 'demo@arabyo.ai', 'name': 'Demo User', 'role': role}
             return None
         if request.endpoint in ('login', 'logout', 'api_session'):
             return None
@@ -199,15 +205,14 @@ def create_app():
     # ------------------------------------------------------------------
     @app.route('/login')
     def login():
-        if not FIREBASE_AUTH_DISABLED and _get_current_user_from_session(session):
-            return redirect(url_for('dashboard'))
-        return render_template('login.html', firebase_config=FIREBASE_CONFIG)
+        # Login page removed — redirect directly to dashboard
+        return redirect(url_for('dashboard'))
 
     @app.route('/logout')
     def logout():
         session.pop('user', None)
         session.pop('next', None)
-        return redirect(url_for('login'))
+        return redirect(url_for('dashboard'))
 
     @app.route('/admin/users')
     def admin_users():
