@@ -111,15 +111,25 @@
                     <a href="{{ url_for('logout') }}" class="logout-link">Sign out</a>
                 </div>
                 {% else %}
-                <div class="role-switcher">
-                    <a href="{{ request.path }}?role=admin" {% if user_role=='admin' %}class="active" {% endif
-                        %}>ADM</a>
-                    <a href="{{ request.path }}?role=analyst" {% if user_role=='analyst' or not user_role
-                        %}class="active" {% endif %}>ANL</a>
-                    <a href="{{ request.path }}?role=risk_manager" {% if user_role=='risk_manager' %}class="active" {%
-                        endif %}>RSK</a>
-                    <a href="{{ request.path }}?role=auditor" {% if user_role=='auditor' %}class="active" {% endif
-                        %}>AUD</a>
+                <div class="role-switcher" style="flex-direction:column;gap:4px;align-items:stretch;">
+                    <div
+                        style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">
+                        Switch Role</div>
+                    <form method="POST" action="/set-role" style="display:flex;flex-direction:column;gap:4px;">
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <button type="submit" name="role" value="admin"
+                            style="background:{% if user_role=='admin' %}var(--accent){% else %}transparent{% endif %};color:{% if user_role=='admin' %}#000{% else %}var(--text-muted){% endif %};border:1px solid {% if user_role=='admin' %}var(--accent){% else %}var(--border){% endif %};border-radius:4px;padding:5px 8px;font-size:10px;cursor:pointer;text-align:left;font-family:inherit;">⬡
+                            Admin</button>
+                        <button type="submit" name="role" value="risk_manager"
+                            style="background:{% if user_role=='risk_manager' %}var(--accent){% else %}transparent{% endif %};color:{% if user_role=='risk_manager' %}#000{% else %}var(--text-muted){% endif %};border:1px solid {% if user_role=='risk_manager' %}var(--accent){% else %}var(--border){% endif %};border-radius:4px;padding:5px 8px;font-size:10px;cursor:pointer;text-align:left;font-family:inherit;">⬡
+                            Risk Manager</button>
+                        <button type="submit" name="role" value="analyst"
+                            style="background:{% if user_role=='analyst' %}var(--accent){% else %}transparent{% endif %};color:{% if user_role=='analyst' %}#000{% else %}var(--text-muted){% endif %};border:1px solid {% if user_role=='analyst' %}var(--accent){% else %}var(--border){% endif %};border-radius:4px;padding:5px 8px;font-size:10px;cursor:pointer;text-align:left;font-family:inherit;">⬡
+                            Analyst</button>
+                        <button type="submit" name="role" value="auditor"
+                            style="background:{% if user_role=='auditor' %}var(--accent){% else %}transparent{% endif %};color:{% if user_role=='auditor' %}#000{% else %}var(--text-muted){% endif %};border:1px solid {% if user_role=='auditor' %}var(--accent){% else %}var(--border){% endif %};border-radius:4px;padding:5px 8px;font-size:10px;cursor:pointer;text-align:left;font-family:inherit;">⬡
+                            Auditor</button>
+                    </form>
                 </div>
                 {% endif %}
             </div>

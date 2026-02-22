@@ -173,9 +173,14 @@ def create_app():
     @app.context_processor
     def inject_global_context():
         if FIREBASE_AUTH_DISABLED:
-            user_role = request.args.get('role', 'analyst')
+            # Read role from session first, then URL param fallback, default admin
+            stored_role = session.get('user', {}).get('role', 'admin')
+            user_role = request.args.get('role', stored_role)
             if user_role not in ('admin', 'analyst', 'risk_manager', 'auditor'):
-                user_role = 'analyst'
+                user_role = 'admin'
+            # Keep session in sync with URL param override
+            if 'user' in session:
+                session['user']['role'] = user_role
             current_user = None
         else:
             user = _get_current_user_from_session(session)
@@ -213,6 +218,20 @@ def create_app():
         session.pop('user', None)
         session.pop('next', None)
         return redirect(url_for('dashboard'))
+
+    @app.route('/set-role', methods=['POST'])
+    def set_role():
+        """Persist role selection in session (no login required)."""
+        role = request.form.get('role', 'admin')
+        if role not in ('admin', 'analyst', 'risk_manager', 'auditor'):
+            role = 'admin'
+        if 'user' not in session:
+            session['user'] = {'email': 'demo@arabyo.ai', 'name': 'Demo User', 'role': role}
+        else:
+            session['user']['role'] = role
+        session.modified = True
+        next_url = request.form.get('next') or '/'
+        return redirect(next_url)
 
     @app.route('/admin/users')
     def admin_users():
