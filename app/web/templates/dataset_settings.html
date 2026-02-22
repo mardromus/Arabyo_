@@ -3,8 +3,243 @@
 
 {% block content %}
 <div class="page-header">
+    <h2>Data Sources &amp; Upload</h2>
+    <p class="subtitle" style="color: var(--text-muted); font-size: 12px;">Upload CSV files directly to the database, or
+        connect to an existing dataset path.</p>
+</div>
+
+<!-- ── Upload Cards ──────────────────────────────────────── -->
+<div class="grid-2" style="margin-bottom:20px;">
+
+    <!-- Transactions Upload -->
+    <div class="card">
+        <div class="card-header">
+            <h3>▲ Upload Transactions CSV</h3>
+        </div>
+        <div class="card-body">
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">
+                Required columns:
+                <code>Timestamp, From Bank, From Account, To Bank, To Account,
+                Amount Received, Receiving Currency, Amount Paid, Payment Currency, Payment Format, Is Laundering</code>
+            </p>
+            <div id="tx-drop" class="upload-drop-zone" onclick="document.getElementById('tx-file').click()">
+                <div class="upload-icon">📂</div>
+                <div id="tx-label">Drop transactions CSV here or <u>click to browse</u></div>
+                <input type="file" id="tx-file" accept=".csv" style="display:none">
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+                <button class="btn btn-primary" onclick="uploadCSV('transactions')">Upload &amp; Load</button>
+                <button class="btn btn-secondary" onclick="uploadCSV('transactions', true)">Append</button>
+            </div>
+            <div id="tx-result" style="margin-top:10px;font-size:12px;"></div>
+        </div>
+    </div>
+
+    <!-- Accounts Upload -->
+    <div class="card">
+        <div class="card-header">
+            <h3>■ Upload Accounts CSV</h3>
+        </div>
+        <div class="card-body">
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">
+                Required columns: <code>Bank Name, Bank ID, Account Number, Entity ID, Entity Name</code>
+            </p>
+            <div id="acc-drop" class="upload-drop-zone" onclick="document.getElementById('acc-file').click()">
+                <div class="upload-icon">📂</div>
+                <div id="acc-label">Drop accounts CSV here or <u>click to browse</u></div>
+                <input type="file" id="acc-file" accept=".csv" style="display:none">
+            </div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+                <button class="btn btn-primary" onclick="uploadCSV('accounts')">Upload &amp; Load</button>
+                <button class="btn btn-secondary" onclick="uploadCSV('accounts', true)">Append</button>
+            </div>
+            <div id="acc-result" style="margin-top:10px;font-size:12px;"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Existing path-based import ───────────────────────── -->
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Current Configuration</h3>
+        </div>
+        <div class="card-body">
+            <table class="data-table" style="font-size:11px;">
+                <tbody>
+                    <tr>
+                        <td style="color:var(--text-muted);width:140px;">Transactions CSV</td>
+                        <td class="mono">{{ transactions_csv }}</td>
+                    </tr>
+                    <tr>
+                        <td style="color:var(--text-muted);">Accounts CSV</td>
+                        <td class="mono">{{ accounts_csv }}</td>
+                    </tr>
+                    <tr>
+                        <td style="color:var(--text-muted);">Database</td>
+                        <td class="mono">{{ database_path }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Import from Server Path</h3>
+        </div>
+        <div class="card-body">
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">Paths relative to project root, e.g.
+                <code>Dataset/HI-Small_Trans.csv</code></p>
+            <form id="ingest-form" class="auth-form" style="max-width:480px;">
+                <div class="form-group">
+                    <label>Transactions CSV path</label>
+                    <input type="text" name="transactions_csv" placeholder="Dataset/HI-Small_Trans.csv"
+                        class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Accounts CSV path</label>
+                    <input type="text" name="accounts_csv" placeholder="Dataset/HI-Small_accounts.csv"
+                        class="form-control">
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button type="submit" name="action" value="load" class="btn btn-primary">Load (Replace)</button>
+                    <button type="submit" name="action" value="append" class="btn btn-secondary">Append</button>
+                </div>
+                <div id="ingest-result" style="margin-top:12px;font-size:12px;"></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .upload-drop-zone {
+        border: 2px dashed var(--border);
+        border-radius: 8px;
+        padding: 28px 20px;
+        text-align: center;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--text-muted);
+        transition: border-color 0.2s, background 0.2s;
+        background: var(--bg-secondary, rgba(255, 255, 255, 0.02));
+    }
+
+    .upload-drop-zone:hover,
+    .upload-drop-zone.drag-over {
+        border-color: var(--accent);
+        background: rgba(var(--accent-rgb, 200, 200, 255), 0.06);
+    }
+
+    .upload-icon {
+        font-size: 28px;
+        margin-bottom: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── Drag & drop visual feedback ───────────────────────────
+    ['tx', 'acc'].forEach(prefix => {
+        const zone = document.getElementById(prefix + '-drop');
+        const input = document.getElementById(prefix + '-file');
+
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+        zone.addEventListener('drop', e => {
+            e.preventDefault(); zone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) { input.files = e.dataTransfer.files; updateLabel(prefix, file.name); }
+        });
+        input.addEventListener('change', () => {
+            if (input.files[0]) updateLabel(prefix, input.files[0].name);
+        });
+    });
+
+    function updateLabel(prefix, name) {
+        document.getElementById(prefix + '-label').innerHTML = `<strong>${name}</strong> selected ✓`;
+    }
+
+    // ── CSV File Upload ───────────────────────────────────────
+    async function uploadCSV(type, append = false) {
+        const prefix = type === 'transactions' ? 'tx' : 'acc';
+        const input = document.getElementById(prefix + '-file');
+        const resultEl = document.getElementById(prefix + '-result');
+
+        if (!input.files || !input.files[0]) {
+            resultEl.textContent = 'Please select a CSV file first.';
+            resultEl.style.color = 'var(--severity-critical, #ef4444)';
+            return;
+        }
+
+        const file = input.files[0];
+        resultEl.textContent = `Uploading ${file.name} (${(file.size / 1024).toFixed(1)} KB)…`;
+        resultEl.style.color = '';
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', type);
+        formData.append('append', append ? '1' : '0');
+
+        try {
+            const resp = await fetch('/api/upload-csv', { method: 'POST', body: formData });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                resultEl.innerHTML = `✓ Loaded <strong>${(data.rows_loaded || 0).toLocaleString()}</strong> rows into <em>${type}</em> table.`;
+                resultEl.style.color = 'var(--success, #22c55e)';
+            } else {
+                resultEl.textContent = data.error || data.message || 'Upload failed';
+                resultEl.style.color = 'var(--severity-critical, #ef4444)';
+            }
+        } catch (err) {
+            resultEl.textContent = 'Upload error: ' + err.message;
+            resultEl.style.color = 'var(--severity-critical, #ef4444)';
+        }
+    }
+
+    // ── Path-based ingest (existing) ─────────────────────────
+    (function () {
+        const form = document.getElementById('ingest-form');
+        form.dataset.action = 'load';
+        form.querySelectorAll('button[type="submit"]').forEach(btn => {
+            btn.addEventListener('click', function () { form.dataset.action = this.value; });
+        });
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const resultEl = document.getElementById('ingest-result');
+            resultEl.textContent = 'Loading…';
+            const body = {
+                truncate: form.dataset.action === 'load',
+                transactions_csv: form.querySelector('[name="transactions_csv"]').value.trim() || undefined,
+                accounts_csv: form.querySelector('[name="accounts_csv"]').value.trim() || undefined,
+            };
+            try {
+                const resp = await fetch('/api/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    resultEl.innerHTML = `Loaded <strong>${(data.transactions_loaded || 0).toLocaleString()}</strong> transactions and <strong>${(data.accounts_loaded || 0).toLocaleString()}</strong> accounts.`;
+                    resultEl.style.color = 'var(--success, #22c55e)';
+                } else {
+                    resultEl.textContent = data.message || data.error || 'Import failed';
+                    resultEl.style.color = 'var(--severity-critical, #ef4444)';
+                }
+            } catch (err) {
+                resultEl.textContent = 'Request failed: ' + err.message;
+                resultEl.style.color = 'var(--severity-critical, #ef4444)';
+            }
+        });
+    })();
+</script>
+{% endblock %}
+
+
+{% block content %}
+<div class="page-header">
     <h2>Data Sources / Import Dataset</h2>
-    <p class="subtitle" style="color: var(--text-muted); font-size: 12px;">View current configuration and import transaction or account data from custom CSV files.</p>
+    <p class="subtitle" style="color: var(--text-muted); font-size: 12px;">View current configuration and import
+        transaction or account data from custom CSV files.</p>
 </div>
 
 <div class="grid-2">
@@ -46,14 +281,18 @@
             <form id="ingest-form" class="auth-form" style="max-width: 480px;">
                 <div class="form-group">
                     <label>Transactions CSV path</label>
-                    <input type="text" name="transactions_csv" placeholder="Dataset/HI-Small_Trans.csv" class="form-control">
+                    <input type="text" name="transactions_csv" placeholder="Dataset/HI-Small_Trans.csv"
+                        class="form-control">
                 </div>
                 <div class="form-group">
                     <label>Accounts CSV path</label>
-                    <input type="text" name="accounts_csv" placeholder="Dataset/HI-Small_accounts.csv" class="form-control">
+                    <input type="text" name="accounts_csv" placeholder="Dataset/HI-Small_accounts.csv"
+                        class="form-control">
                 </div>
                 <p style="font-size: 10px; color: var(--text-muted); margin-bottom: 12px;">
-                    <strong>CSV schema:</strong> Transactions must have: Timestamp, From Bank, From Account, To Bank, To Account, Amount Received, Receiving Currency, Amount Paid, Payment Currency, Payment Format, Is Laundering. Accounts must have: Bank Name, Bank ID, Account Number, Entity ID, Entity Name.
+                    <strong>CSV schema:</strong> Transactions must have: Timestamp, From Bank, From Account, To Bank, To
+                    Account, Amount Received, Receiving Currency, Amount Paid, Payment Currency, Payment Format, Is
+                    Laundering. Accounts must have: Bank Name, Bank ID, Account Number, Entity ID, Entity Name.
                 </p>
                 <div style="display: flex; gap: 8px;">
                     <button type="submit" name="action" value="load" class="btn btn-primary">
@@ -72,41 +311,41 @@
 
 {% block scripts %}
 <script>
-(function() {
-    const form = document.getElementById('ingest-form');
-    form.dataset.action = 'load';
-    form.querySelectorAll('button[type="submit"]').forEach(btn => {
-        btn.addEventListener('click', function() { form.dataset.action = this.value; });
-    });
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const resultEl = document.getElementById('ingest-result');
-        resultEl.textContent = 'Loading…';
-        resultEl.style.color = '';
-        const body = {
-            truncate: form.dataset.action === 'load',
-            transactions_csv: form.querySelector('[name="transactions_csv"]').value.trim() || undefined,
-            accounts_csv: form.querySelector('[name="accounts_csv"]').value.trim() || undefined,
-        };
-        try {
-            const resp = await fetch('/api/ingest{% if not auth_enabled %}?role=admin{% endif %}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            const data = await resp.json();
-            if (resp.ok && data.status === 'success') {
-                resultEl.innerHTML = `Loaded <strong>${(data.transactions_loaded || 0).toLocaleString()}</strong> transactions and <strong>${(data.accounts_loaded || 0).toLocaleString()}</strong> accounts.`;
-                resultEl.style.color = 'var(--success, #22c55e)';
-            } else {
-                resultEl.textContent = data.message || data.error || 'Import failed';
+    (function () {
+        const form = document.getElementById('ingest-form');
+        form.dataset.action = 'load';
+        form.querySelectorAll('button[type="submit"]').forEach(btn => {
+            btn.addEventListener('click', function () { form.dataset.action = this.value; });
+        });
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const resultEl = document.getElementById('ingest-result');
+            resultEl.textContent = 'Loading…';
+            resultEl.style.color = '';
+            const body = {
+                truncate: form.dataset.action === 'load',
+                transactions_csv: form.querySelector('[name="transactions_csv"]').value.trim() || undefined,
+                accounts_csv: form.querySelector('[name="accounts_csv"]').value.trim() || undefined,
+            };
+            try {
+                const resp = await fetch('/api/ingest{% if not auth_enabled %}?role=admin{% endif %}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    resultEl.innerHTML = `Loaded <strong>${(data.transactions_loaded || 0).toLocaleString()}</strong> transactions and <strong>${(data.accounts_loaded || 0).toLocaleString()}</strong> accounts.`;
+                    resultEl.style.color = 'var(--success, #22c55e)';
+                } else {
+                    resultEl.textContent = data.message || data.error || 'Import failed';
+                    resultEl.style.color = 'var(--severity-critical, #ef4444)';
+                }
+            } catch (err) {
+                resultEl.textContent = 'Request failed: ' + err.message;
                 resultEl.style.color = 'var(--severity-critical, #ef4444)';
             }
-        } catch (err) {
-            resultEl.textContent = 'Request failed: ' + err.message;
-            resultEl.style.color = 'var(--severity-critical, #ef4444)';
-        }
-    });
-})();
+        });
+    })();
 </script>
 {% endblock %}

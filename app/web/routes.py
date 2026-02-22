@@ -313,6 +313,140 @@ def create_app():
             'database_path': DB_PATH,
         })
 
+    @app.route('/api/upload-csv', methods=['POST'])
+    def api_upload_csv():
+        """Upload a CSV file to load transactions or accounts directly into the database."""
+        try:
+            import io
+            import pandas as pd
+
+            file = request.files.get('file')
+            data_type = request.form.get('type', 'transactions')  # 'transactions' or 'accounts'
+            append = request.form.get('append', '0') == '1'
+
+            if not file or not file.filename:
+                return jsonify({'error': 'No file provided'}), 400
+            if not file.filename.lower().endswith('.csv'):
+                return jsonify({'error': 'Only CSV files are supported'}), 400
+
+            content = file.read().decode('utf-8', errors='replace')
+            df = pd.read_csv(io.StringIO(content))
+            df.columns = [c.strip() for c in df.columns]
+
+            conn = get_connection()
+
+            if data_type == 'transactions':
+                # Column mapping — flexible, case-insensitive
+                col_map = {
+                    'Timestamp': ['timestamp', 'Timestamp', 'date', 'Date'],
+                    'From Bank': ['from_bank', 'From Bank', 'FromBank'],
+                    'From Account': ['from_account', 'From Account', 'FromAccount'],
+                    'To Bank': ['to_bank', 'To Bank', 'ToBank'],
+                    'To Account': ['to_account', 'To Account', 'ToAccount'],
+                    'Amount Received': ['amount_received', 'Amount Received', 'AmountReceived'],
+                    'Receiving Currency': ['receiving_currency', 'Receiving Currency', 'ReceivingCurrency'],
+                    'Amount Paid': ['amount_paid', 'Amount Paid', 'AmountPaid'],
+                    'Payment Currency': ['payment_currency', 'Payment Currency', 'PaymentCurrency'],
+                    'Payment Format': ['payment_format', 'Payment Format', 'PaymentFormat'],
+                    'Is Laundering': ['is_laundering', 'Is Laundering', 'IsLaundering'],
+                }
+
+                def find_col(df_cols, candidates):
+                    for c in candidates:
+                        for dc in df_cols:
+                            if dc.lower().replace(' ', '_') == c.lower().replace(' ', '_'):
+                                return dc
+                    return None
+
+                mapped = {k: find_col(df.columns.tolist(), v) for k, v in col_map.items()}
+                missing = [k for k, v in mapped.items() if v is None]
+                if missing:
+                    return jsonify({'error': f'Missing columns: {missing}. Got: {list(df.columns)}'}), 400
+
+                if not append:
+                    execute("DELETE FROM transactions", [])
+
+                rows_loaded = 0
+                for _, row in df.iterrows():
+                    try:
+                        execute(
+                            """INSERT INTO transactions
+                               (timestamp, from_bank, from_account, to_bank, to_account,
+                                amount_received, receiving_currency, amount_paid, payment_currency,
+                                payment_format, is_laundering)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                            [
+                                str(row[mapped['Timestamp']]),
+                                str(row[mapped['From Bank']]),
+                                str(row[mapped['From Account']]),
+                                str(row[mapped['To Bank']]),
+                                str(row[mapped['To Account']]),
+                                float(row[mapped['Amount Received']]) if pd.notna(row[mapped['Amount Received']]) else 0,
+                                str(row[mapped['Receiving Currency']]),
+                                float(row[mapped['Amount Paid']]) if pd.notna(row[mapped['Amount Paid']]) else 0,
+                                str(row[mapped['Payment Currency']]),
+                                str(row[mapped['Payment Format']]),
+                                int(row[mapped['Is Laundering']]) if pd.notna(row[mapped['Is Laundering']]) else 0,
+                            ]
+                        )
+                        rows_loaded += 1
+                    except Exception:
+                        continue
+
+                conn._conn.commit()
+                return jsonify({'status': 'success', 'rows_loaded': rows_loaded, 'type': 'transactions'})
+
+            elif data_type == 'accounts':
+                acc_map = {
+                    'Bank Name': ['bank_name', 'Bank Name', 'BankName'],
+                    'Bank ID': ['bank_id', 'Bank ID', 'BankID'],
+                    'Account Number': ['account_number', 'Account Number', 'AccountNumber', 'Account'],
+                    'Entity ID': ['entity_id', 'Entity ID', 'EntityID'],
+                    'Entity Name': ['entity_name', 'Entity Name', 'EntityName'],
+                }
+
+                def find_col(df_cols, candidates):
+                    for c in candidates:
+                        for dc in df_cols:
+                            if dc.lower().replace(' ', '_') == c.lower().replace(' ', '_'):
+                                return dc
+                    return None
+
+                mapped = {k: find_col(df.columns.tolist(), v) for k, v in acc_map.items()}
+                missing = [k for k, v in mapped.items() if v is None]
+                if missing:
+                    return jsonify({'error': f'Missing columns: {missing}. Got: {list(df.columns)}'}), 400
+
+                if not append:
+                    execute("DELETE FROM accounts", [])
+
+                rows_loaded = 0
+                for _, row in df.iterrows():
+                    try:
+                        execute(
+                            """INSERT INTO accounts (bank_name, bank_id, account_number, entity_id, entity_name)
+                               VALUES (%s,%s,%s,%s,%s)""",
+                            [
+                                str(row[mapped['Bank Name']]),
+                                str(row[mapped['Bank ID']]),
+                                str(row[mapped['Account Number']]),
+                                str(row[mapped['Entity ID']]),
+                                str(row[mapped['Entity Name']]),
+                            ]
+                        )
+                        rows_loaded += 1
+                    except Exception:
+                        continue
+
+                conn._conn.commit()
+                return jsonify({'status': 'success', 'rows_loaded': rows_loaded, 'type': 'accounts'})
+
+            else:
+                return jsonify({'error': f'Unknown type: {data_type}'}), 400
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     @app.route('/api/session', methods=['POST'])
     def api_session():
         """Exchange Firebase ID token for server session. Returns user + role."""
