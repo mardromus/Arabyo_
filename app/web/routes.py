@@ -145,6 +145,13 @@ def create_app():
     except Exception as e:
         app.logger.warning(f'[startup] DB init warning: {e}')
 
+    # Seed demo data if running on Railway/cloud with empty DB
+    try:
+        from seed_demo import seed_demo_data
+        seed_demo_data()
+    except Exception as e:
+        app.logger.warning(f'[startup] Demo seed warning (non-fatal): {e}')
+
     # ------------------------------------------------------------------
     # AUTH — require login unless disabled or public route
     # ------------------------------------------------------------------
