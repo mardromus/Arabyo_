@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Compliance Agent{% endblock %}</title>
+    <meta name="description" content="Explainable AI Compliance Agent — Regulator-Grade Policy Intelligence">
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+
+<body data-role="{{ user_role | default('analyst') }}">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-brand">
+                <div class="logo">C</div>
+                <div>
+                    <h1>Arabyo</h1>
+                    <small>Policy Intelligence</small>
+                </div>
+            </div>
+
+            <!-- Pipeline Status -->
+            <div class="pipeline-status">
+                <span class="pipeline-dot {{ pipeline_status | default('active') }}"></span>
+                {% if pipeline_status == 'degraded' %}
+                Monitoring Degraded
+                {% elif pipeline_status == 'down' %}
+                Pipeline Down
+                {% else %}
+                Monitoring Active
+                {% endif %}
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Overview</div>
+                <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
+                    <span class="icon">◆</span> Dashboard
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Detection</div>
+                <a href="/alerts" class="nav-link {% if request.path == '/alerts' %}active{% endif %}">
+                    <span class="icon">▲</span> Alerts
+                    {% if pending_count is defined and pending_count > 0 %}
+                    <span class="nav-badge">{{ pending_count }}</span>
+                    {% endif %}
+                </a>
+                <a href="/clusters" class="nav-link {% if '/clusters' in request.path %}active{% endif %}">
+                    <span class="icon">◈</span> Alert Clusters
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Intelligence</div>
+                <a href="/policies" class="nav-link {% if '/policies' in request.path %}active{% endif %}">
+                    <span class="icon">■</span> Policies & Rules
+                </a>
+                <a href="/governance" class="nav-link {% if '/governance' in request.path %}active{% endif %}">
+                    <span class="icon">◆</span> Governance
+                </a>
+                <a href="/rulesets" class="nav-link {% if '/rulesets' in request.path %}active{% endif %}">
+                    <span class="icon">▤</span> Rule Sets
+                </a>
+                <a href="/simulation" class="nav-link {% if '/simulation' in request.path %}active{% endif %}">
+                    <span class="icon">◈</span> Impact Simulator
+                </a>
+                <a href="/audit" class="nav-link {% if '/audit' in request.path %}active{% endif %}">
+                    <span class="icon">◇</span> Audit Trail
+                </a>
+                <a href="/reports" class="nav-link {% if '/reports' in request.path %}active{% endif %}">
+                    <span class="icon">▬</span> Reports
+                </a>
+            </div>
+
+            <!-- Admin-only section -->
+            {% if user_role == 'admin' %}
+            <div class="nav-section" data-role-hide="non-admin">
+                <div class="nav-section-title">System</div>
+                <a href="/admin/users" class="nav-link {% if '/admin/users' in request.path %}active{% endif %}">
+                    <span class="icon">U</span> User Management
+                </a>
+                <a href="{{ url_for('admin_dataset') }}{% if not auth_enabled %}?role=admin{% endif %}"
+                    class="nav-link {% if '/admin/dataset' in request.path %}active{% endif %}">
+                    <span class="icon">▥</span> Data / Import
+                </a>
+                <form action="/api/scan" method="POST" style="padding: 0 16px;">
+                    <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 10px;">
+                        RUN SCAN
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <div class="role-badge">
+                    <div class="role-icon">
+                        {% if user_role == 'admin' %}A{% elif user_role == 'risk_manager' %}R{% elif user_role ==
+                        'auditor' %}U{% else %}A{% endif %}
+                    </div>
+                    <span>{{ user_role | default('analyst') | replace('_', ' ') | upper }}</span>
+                </div>
+                {% if auth_enabled and current_user %}
+                <div class="user-info">
+                    <small style="color: var(--text-muted);">{{ current_user.email or current_user.name }}</small>
+                    <a href="{{ url_for('logout') }}" class="logout-link">Sign out</a>
+                </div>
+                {% else %}
+                <div class="role-switcher">
+                    <a href="{{ request.path }}?role=admin" {% if user_role=='admin' %}class="active" {% endif
+                        %}>ADM</a>
+                    <a href="{{ request.path }}?role=analyst" {% if user_role=='analyst' or not user_role
+                        %}class="active" {% endif %}>ANL</a>
+                    <a href="{{ request.path }}?role=risk_manager" {% if user_role=='risk_manager' %}class="active" {%
+                        endif %}>RSK</a>
+                    <a href="{{ request.path }}?role=auditor" {% if user_role=='auditor' %}class="active" {% endif
+                        %}>AUD</a>
+                </div>
+                {% endif %}
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script>
+        // Role-based visibility
+        (function () {
+            const role = document.body.dataset.role || 'analyst';
+            document.querySelectorAll('[data-role-hide]').forEach(el => {
+                const hideFor = el.dataset.roleHide.split(',').map(r => r.trim());
+                if (hideFor.includes(role)) el.classList.add('role-hidden');
+            });
+            document.querySelectorAll('[data-role-show]').forEach(el => {
+                const showFor = el.dataset.roleShow.split(',').map(r => r.trim());
+                if (!showFor.includes(role)) el.classList.add('role-hidden');
+            });
+        })();
+    </script>
+    {% block scripts %}{% endblock %}
+
+    <!-- ── Floating Compliance Chatbot ──────────────────────────── -->
+    <style>
+        #ai-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1, #818cf8);
+            border: none;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 9999;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+            transition: all .25s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #ai-fab:hover {
+            transform: scale(1.08);
+            box-shadow: 0 6px 28px rgba(99, 102, 241, 0.6);
+        }
+
+        #ai-fab.open {
+            border-radius: 12px;
+            width: 40px;
+            height: 40px;
+            font-size: 16px;
+            bottom: calc(100vh - 56px);
+            right: 24px;
+        }
+
+        #ai-panel {
+            position: fixed;
+            top: 0;
+            right: -420px;
+            width: 400px;
+            height: 100vh;
+            background: var(--bg-card);
+            border-left: 1px solid var(--border-strong);
+            z-index: 9998;
+            display: flex;
+            flex-direction: column;
+            transition: right .3s cubic-bezier(.4, 0, .2, 1);
+            box-shadow: -4px 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        #ai-panel.open {
+            right: 0;
+        }
+
+        .ai-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-strong);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg-elevated);
+        }
+
+        .ai-header h3 {
+            margin: 0;
+            font-size: 14px;
+            color: var(--text-primary);
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .ai-header small {
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+
+        .ai-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px;
+        }
+
+        .ai-close:hover {
+            color: var(--text-primary);
+        }
+
+        .ai-chips {
+            padding: 10px 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            border-bottom: 1px solid var(--border-strong);
+            background: var(--bg-primary);
+        }
+
+        .ai-chip {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all .15s;
+            white-space: nowrap;
+        }
+
+        .ai-chip:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            border-color: var(--accent-muted);
+        }
+
+        .ai-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .ai-msg {
+            max-width: 92%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        .ai-msg.user {
+            align-self: flex-end;
+            background: var(--border-strong);
+            color: var(--text-primary);
+            border-bottom-right-radius: 4px;
+        }
+
+        .ai-msg.bot {
+            align-self: flex-start;
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-bottom-left-radius: 4px;
+        }
+
+        .ai-msg.bot strong {
+            color: var(--text-primary);
+        }
+
+        .ai-msg.bot code {
+            background: var(--bg-card);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 11px;
+            color: var(--text-primary);
+        }
+
+        .ai-src {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 6px;
+            padding-top: 4px;
+            border-top: 1px solid var(--border-strong);
+        }
+
+        .ai-tools {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+
+        .ai-tool-badge {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            border: 1px solid var(--border-strong);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+        }
+
+        .ai-typing {
+            align-self: flex-start;
+            padding: 10px 14px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .ai-typing span {
+            animation: blink 1.2s infinite;
+        }
+
+        .ai-typing span:nth-child(2) {
+            animation-delay: .2s;
+        }
+
+        .ai-typing span:nth-child(3) {
+            animation-delay: .4s;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: .3
+            }
+
+            50% {
+                opacity: 1
+            }
+        }
+
+        .ai-input-wrap {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-strong);
+            background: var(--bg-primary);
+            display: flex;
+            gap: 8px;
+        }
+
+        .ai-input {
+            flex: 1;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .ai-input:focus {
+            border-color: var(--border-active);
+        }
+
+        .ai-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .ai-send {
+            background: var(--accent);
+            border: none;
+            color: var(--text-inverse);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: opacity .15s;
+            font-weight: 500;
+        }
+
+        .ai-send:hover {
+            opacity: 0.8;
+        }
+
+        .ai-send:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+    </style>
+
+    <button id="ai-fab" onclick="toggleChat()" title="Arabyo Assistant">&#9883;</button>
+    <div id="ai-panel">
+        <div class="ai-header">
+            <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;"></div>
+            <h3>Arabyo Assistant</h3>
+            <small>Evidence-backed</small>
+            <button class="ai-close" onclick="toggleChat()">&times;</button>
+        </div>
+        <div class="ai-chips" id="ai-chips"></div>
+        <div class="ai-messages" id="ai-messages">
+            <div class="ai-msg bot">Welcome. I can help you investigate alerts, explain rules, analyze clusters, and
+                navigate the compliance platform.<br><br>What would you like to know?</div>
+        </div>
+        <div class="ai-input-wrap">
+            <input class="ai-input" id="ai-input" placeholder="Ask about alerts, rules, clusters..."
+                onkeydown="if(event.key==='Enter')sendChat()" autocomplete="off">
+            <button class="ai-send" id="ai-send" onclick="sendChat()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const fab = document.getElementById('ai-fab'), panel = document.getElementById('ai-panel');
+            const msgsEl = document.getElementById('ai-messages'), inputEl = document.getElementById('ai-input');
+            const chipsEl = document.getElementById('ai-chips'), sendBtn = document.getElementById('ai-send');
+            let chatOpen = false, history = [], sending = false;
+
+            // Context-aware chips based on current page
+            const path = location.pathname;
+            let chips = ['System overview', 'Top alerts', 'Cluster summary', 'Governance status'];
+            if (path.includes('/alerts')) chips = ['Explain this alert', 'Show similar alerts', 'Why high risk?', 'Alert trends'];
+            else if (path.includes('/clusters')) chips = ['Cluster overview', 'Highest priority cluster', 'Explain cluster grouping', 'Resolution stats'];
+            else if (path.includes('/governance')) chips = ['Policy versions', 'Pending approvals', 'Recent changes', 'Rollback history'];
+            else if (path.includes('/policies')) chips = ['Active rules', 'Rule coverage', 'Ambiguous rules', 'Policy summary'];
+            chipsEl.innerHTML = chips.map(c => `<div class="ai-chip" onclick="sendChip('${c}')">${c}</div>`).join('');
+
+            window.toggleChat = function () {
+                chatOpen = !chatOpen;
+                panel.classList.toggle('open', chatOpen);
+                fab.classList.toggle('open', chatOpen);
+                fab.innerHTML = chatOpen ? '&times;' : '&#9883;';
+                if (chatOpen) setTimeout(() => inputEl.focus(), 300);
+            };
+
+            window.sendChip = function (text) {
+                inputEl.value = text;
+                sendChat();
+            };
+
+            window.sendChat = async function () {
+                const text = inputEl.value.trim();
+                if (!text || sending) return;
+                sending = true; sendBtn.disabled = true;
+                inputEl.value = '';
+
+                // User message
+                addMsg(text, 'user');
+                history.push({ role: 'user', content: text });
+
+                // Typing indicator
+                const typing = document.createElement('div');
+                typing.className = 'ai-typing';
+                typing.innerHTML = '<span>.</span><span>.</span><span>.</span>';
+                msgsEl.appendChild(typing);
+                msgsEl.scrollTop = msgsEl.scrollHeight;
+
+                try {
+                    // Build context
+                    const ctx = { page: path };
+                    const m = path.match(/\/alerts\/(\d+)/);
+                    if (m) ctx.alert_id = parseInt(m[1]);
+                    const cm = path.match(/\/clusters\/(CLU-\d+)/);
+                    if (cm) ctx.cluster_id = cm[1];
+
+                    const r = await fetch('/api/chat', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messages: history.slice(-8), context: ctx, role: document.body.dataset.role || 'analyst' })
+                    });
+                    const data = await r.json();
+                    typing.remove();
+
+                    // Format response
+                    let html = formatMd(data.response || 'No response received.');
+                    if (data.tool_calls && data.tool_calls.length) {
+                        html += '<div class="ai-tools">' + data.tool_calls.map(t => `<span class="ai-tool-badge">${t.tool}</span>`).join('') + '</div>';
+                    }
+                    addMsg(html, 'bot', true);
+                    history.push({ role: 'assistant', content: data.response || '' });
+                } catch (e) {
+                    typing.remove();
+                    addMsg('Connection error. Please try again.', 'bot', true);
+                }
+                sending = false; sendBtn.disabled = false;
+                inputEl.focus();
+            };
+
+            function addMsg(content, type, isHtml) {
+                const d = document.createElement('div');
+                d.className = 'ai-msg ' + type;
+                if (isHtml) d.innerHTML = content; else d.textContent = content;
+                msgsEl.appendChild(d);
+                msgsEl.scrollTop = msgsEl.scrollHeight;
+            }
+
+            function formatMd(text) {
+                return text
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/`(.+?)`/g, '<code>$1</code>')
+                    .replace(/^- (.+)$/gm, '&bull; $1')
+                    .replace(/^### (.+)$/gm, '<strong style="font-size:14px">$1</strong>')
+                    .replace(/^## (.+)$/gm, '<strong style="font-size:15px">$1</strong>')
+                    .replace(/\n/g, '<br>');
+            }
+        })();
+    </script>
+</body>
+
+</html>

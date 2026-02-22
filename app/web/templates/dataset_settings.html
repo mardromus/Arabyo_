@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Data Sources / Import Dataset — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Data Sources / Import Dataset</h2>
+    <p class="subtitle" style="color: var(--text-muted); font-size: 12px;">View current configuration and import transaction or account data from custom CSV files.</p>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Current Configuration</h3>
+        </div>
+        <div class="card-body">
+            <table class="data-table" style="font-size: 11px;">
+                <tbody>
+                    <tr>
+                        <td style="color: var(--text-muted); width: 140px;">Transactions CSV</td>
+                        <td class="mono">{{ transactions_csv }}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: var(--text-muted);">Accounts CSV</td>
+                        <td class="mono">{{ accounts_csv }}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: var(--text-muted);">Database</td>
+                        <td class="mono">{{ database_path }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 12px;">
+                To use a different database, set <code>DB_PATH</code> in <code>.env</code> and restart the application.
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Import New Dataset</h3>
+        </div>
+        <div class="card-body">
+            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">
+                Paths relative to project root, e.g. <code>Dataset/Other_Trans.csv</code>
+            </p>
+            <form id="ingest-form" class="auth-form" style="max-width: 480px;">
+                <div class="form-group">
+                    <label>Transactions CSV path</label>
+                    <input type="text" name="transactions_csv" placeholder="Dataset/HI-Small_Trans.csv" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Accounts CSV path</label>
+                    <input type="text" name="accounts_csv" placeholder="Dataset/HI-Small_accounts.csv" class="form-control">
+                </div>
+                <p style="font-size: 10px; color: var(--text-muted); margin-bottom: 12px;">
+                    <strong>CSV schema:</strong> Transactions must have: Timestamp, From Bank, From Account, To Bank, To Account, Amount Received, Receiving Currency, Amount Paid, Payment Currency, Payment Format, Is Laundering. Accounts must have: Bank Name, Bank ID, Account Number, Entity ID, Entity Name.
+                </p>
+                <div style="display: flex; gap: 8px;">
+                    <button type="submit" name="action" value="load" class="btn btn-primary">
+                        Load data (Replace)
+                    </button>
+                    <button type="submit" name="action" value="append" class="btn btn-secondary">
+                        Append data
+                    </button>
+                </div>
+                <div id="ingest-result" style="margin-top: 12px; font-size: 12px;"></div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const form = document.getElementById('ingest-form');
+    form.dataset.action = 'load';
+    form.querySelectorAll('button[type="submit"]').forEach(btn => {
+        btn.addEventListener('click', function() { form.dataset.action = this.value; });
+    });
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const resultEl = document.getElementById('ingest-result');
+        resultEl.textContent = 'Loading…';
+        resultEl.style.color = '';
+        const body = {
+            truncate: form.dataset.action === 'load',
+            transactions_csv: form.querySelector('[name="transactions_csv"]').value.trim() || undefined,
+            accounts_csv: form.querySelector('[name="accounts_csv"]').value.trim() || undefined,
+        };
+        try {
+            const resp = await fetch('/api/ingest{% if not auth_enabled %}?role=admin{% endif %}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                resultEl.innerHTML = `Loaded <strong>${(data.transactions_loaded || 0).toLocaleString()}</strong> transactions and <strong>${(data.accounts_loaded || 0).toLocaleString()}</strong> accounts.`;
+                resultEl.style.color = 'var(--success, #22c55e)';
+            } else {
+                resultEl.textContent = data.message || data.error || 'Import failed';
+                resultEl.style.color = 'var(--severity-critical, #ef4444)';
+            }
+        } catch (err) {
+            resultEl.textContent = 'Request failed: ' + err.message;
+            resultEl.style.color = 'var(--severity-critical, #ef4444)';
+        }
+    });
+})();
+</script>
+{% endblock %}

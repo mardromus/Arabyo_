@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Reports — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Audit Reports</h2>
+        <div class="subtitle">{{ reports|length }} reports generated</div>
+    </div>
+    <a href="/reports/generate/summary" class="btn btn-primary" data-role-hide="auditor">Generate Summary</a>
+</div>
+
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Filename</th>
+                    <th>Generated</th>
+                    <th>Summary</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for report in reports %}
+                <tr>
+                    <td class="mono">#{{ report.id }}</td>
+                    <td><span class="badge badge-medium">{{ report.report_type }}</span></td>
+                    <td class="mono" style="font-size: 11px;">{{ report.filename }}</td>
+                    <td class="mono" style="font-size: 10px; color: var(--text-muted);">{{ report.generated_at[:16] }}
+                    </td>
+                    <td style="font-size: 11px; color: var(--text-secondary); max-width: 300px;">{{ report.summary }}
+                    </td>
+                    <td>
+                        <a href="/reports/download/{{ report.filename }}" class="btn btn-sm">↓ Download</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not reports %}
+                <tr>
+                    <td colspan="6">
+                        <div class="empty-state">
+                            <div class="icon">▬</div>
+                            <h3>No reports generated</h3>
+                            <p>Generate an executive summary or alert report</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

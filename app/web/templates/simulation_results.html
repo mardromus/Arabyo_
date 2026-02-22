@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Simulation Results — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="{{ url_for('simulation_page') }}" class="back-link">&larr; Impact Simulator</a>
+        <h2>Policy update impact summary</h2>
+        <div class="subtitle">Run: {{ run.created_at or '' }} · {{ run.ruleset_id or '' }}</div>
+    </div>
+    <div>
+        <button type="button" class="btn btn-primary" id="exportBtn" data-simulation-id="{{ run.simulation_id }}">Export
+            PDF</button>
+    </div>
+</div>
+
+{% if results %}
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Executive summary</h3>
+        </div>
+        <div class="card-body">
+            <p>{{ results.get('executive_summary') or 'No summary generated.' }}</p>
+            <ul class="key-value" style="margin-top: 12px;">
+                <li><strong>Baseline alerts:</strong> {{ results.get('baseline_alerts', 0) }}</li>
+                <li><strong>Simulated alerts:</strong> {{ results.get('simulated_alerts', 0) }}</li>
+                <li><strong>Newly flagged:</strong> {{ results.get('newly_flagged', 0) }}</li>
+                <li><strong>No longer flagged:</strong> {{ results.get('no_longer_flagged', 0) }}</li>
+                <li><strong>Net change:</strong> {{ results.get('percent_change', 0) }}%</li>
+            </ul>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3>Workload estimate</h3>
+        </div>
+        <div class="card-body">
+            {% set wl = results.get('workload_estimate') or {} %}
+            <p>Estimated hours per day: <strong>{{ wl.get('estimated_hours_per_day', 0) }}</strong></p>
+            <p>Additional alerts (total): <strong>{{ wl.get('additional_alerts_total', 0) }}</strong></p>
+            <p>Hours delta: <strong>{{ wl.get('hours_delta', 0) }}</strong></p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Severity impact</h3>
+    </div>
+    <div class="card-body">
+        {% set hr = results.get('high_risk_impact') or {} %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Baseline</th>
+                    <th>Simulated</th>
+                    <th>Delta</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sev in ['critical', 'high', 'medium', 'low'] %}
+                <tr>
+                    <td>{{ sev }}</td>
+                    <td>{{ (hr.get('baseline') or {}).get(sev, 0) }}</td>
+                    <td>{{ (hr.get('simulated') or {}).get(sev, 0) }}</td>
+                    <td>{{ (hr.get('simulated') or {}).get(sev, 0) - (hr.get('baseline') or {}).get(sev, 0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Sample of newly flagged transactions</h3>
+    </div>
+    <div class="card-body">
+        {% set sample = results.get('transaction_sample') or [] %}
+        {% if sample %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Timestamp</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in sample %}
+                <tr>
+                    <td>{{ t.get('id') }}</td>
+                    <td>{{ t.get('timestamp', '')[:19] }}</td>
+                    <td>{{ t.get('from_bank') }}_{{ t.get('from_account') }}</td>
+                    <td>{{ t.get('to_bank') }}_{{ t.get('to_account') }}</td>
+                    <td>{{ t.get('amount_paid') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No sample transactions.</p>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <p class="empty-state">No result data for this run.</p>
+    </div>
+</div>
+{% endif %}
+
+<script>
+    document.getElementById('exportBtn') && document.getElementById('exportBtn').addEventListener('click', function () {
+        var id = this.getAttribute('data-simulation-id');
+        if (!id) return;
+        window.open('/api/simulation/' + encodeURIComponent(id) + '/report?print=1', '_blank');
+    });
+</script>
+{% endblock %}

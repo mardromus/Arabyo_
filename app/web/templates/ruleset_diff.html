@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Compare Rule Sets — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="{{ url_for('rulesets_page') }}" class="back-link">&larr; Rule Sets</a>
+        <h2>Compare Rule Sets</h2>
+        <div class="subtitle">{{ id1 }} vs {{ id2 }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Summary</h3>
+    </div>
+    <div class="card-body">
+        {% if diff.error %}
+        <p class="error">{{ diff.error }}</p>
+        {% else %}
+        <p><strong>Added in second:</strong> {{ (diff.added_in_2 or [])|length }} rules</p>
+        <p><strong>Removed in second:</strong> {{ (diff.removed_in_2 or [])|length }} rules</p>
+        <p><strong>Common (compared):</strong> {{ (diff.rule_diffs or {})|length }} rules</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Rule-by-rule diff</h3>
+    </div>
+    <div class="card-body rule-diff-container">
+        {% if diff_html %}
+        {{ diff_html|safe }}
+        {% else %}
+        <p class="empty-state">No differences to show, or select two rule sets to compare.</p>
+        {% endif %}
+    </div>
+</div>
+
+<p><a href="{{ url_for('rulesets_page') }}" class="btn btn-outline">Back to Rule Sets</a></p>
+{% endblock %}

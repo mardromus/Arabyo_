@@ -1,0 +1,112 @@
+  Gemini API Key: SET (AIzaSyCYK7...)
+
+============================================================
+  TEST: 1. Enhanced DSL Schemas
+============================================================
+  [1a] Operator IN = 'in'
+  [1a] Operator COUNT = 'count'
+  [1a] Operator RATE = 'rate'
+  [1b] Status APPROVED = 'approved'
+  [1b] Status RETIRED = 'retired'
+  [1b] Status SUPERSEDED = 'superseded'
+  [1c] PolicyStatus: ['draft', 'approved', 'retired']
+  [1d] Condition: transaction_amount > 10000 (unit=USD, scope=transaction)
+  [1e] Source: page=5, para=p_5_3, offsets=[1024:1072]
+  [1f] Rule: R-AML-001 | policy=POL-AML-2024 vv1.2
+  [1g] Rule hash: 6c324304488e598c (deterministic: True)
+  [1h] Legacy dict: 23 keys, new fields present
+  >> PASS
+
+============================================================
+  TEST: 2. Clause-Level Traceability
+============================================================
+  [2a] Valid offsets: [10:21]
+  [2b] Invalid offsets correctly rejected
+  [2c] Paragraph ID: p_3_2
+  [2d] Computed offsets: [14:62]
+       Highlighted: 'Transactions exceeding $10,000 must be reported.'
+       Paragraph: p_1_2
+  >> PASS
+
+============================================================
+  TEST: 3. Ambiguity Detection & Confidence Scoring
+============================================================
+  [3a] Vague terms detected: 2
+       - Vague term 'unusual' -- enforcement may be inconsistent
+       - Vague term 'suspicious' -- enforcement may be inconsistent
+  [3b] Missing numeric threshold: detected
+  [3c] Missing time window on velocity rule: detected
+  [3d] Weighted confidence (good rule): 0.963
+  [3d] Weighted confidence (poor rule): 0.229
+  [3e] Post-processed: 2 rules, 1 flagged for review
+  >> PASS
+
+============================================================
+  TEST: 4. Policy Versioning & Rule Registry
+============================================================
+  [4a] Registered: POL-TEST-001 v1.0 (draft)
+  [4b] Idempotent re-upload: status=existing
+  [4c] New version: v1.1
+  [4d] Policy approved
+  [4e] Versions: ['v1.0', 'v1.1']
+  [4f] Rules registered: 2 new, 0 dup
+  [4g] Duplicate detection: 1 dup (correct)
+  [4h] Rule R-TEST-001 approved
+  [4h] Rule R-TEST-002 rejected
+  [4i] R-TEST-001 superseded by R-TEST-001-v2
+  [4j] Lineage: R-TEST-001 -> R-TEST-001-v2
+  [4j] Ancestors of v2: R-TEST-001
+  [4k] R-TEST-002 soft-deleted
+  [4k] Active rules: ['R-TEST-001', 'R-TEST-001-v2'] (R-TEST-002 excluded)
+  [4l] Policy audit trail: 5 entries
+       Actions: ['register_policy', 'register_policy', 'approve_policy', 'register_rule', 'register_rule']
+  [4m] Policy retired
+  >> PASS
+
+============================================================
+  TEST: 5. LLM Extractor (REAL Gemini API)
+============================================================
+  LLM available: True
+  [5a] Regex adapter: AUTO-abc123 -> conf=0.6
+  [5b] Testing REAL Gemini API call...
+       Client initialized successfully
+       Gemini returned 3 rules:
+         [CTR-001] Currency Transaction Report Threshold
+           Type: threshold, Severity: critical
+           Confidence: 1.0, Parser: 2.0-gemini
+         [CTR-002] Aggregated Currency Transaction Reporting
+           Type: velocity, Severity: critical
+           Confidence: 1.0, Parser: 2.0-gemini
+         [WIRE-001] Wire Transfer Originator Info Collection
+           Type: threshold, Severity: high
+           Confidence: 1.0, Parser: 2.0-gemini
+  [5b] REAL Gemini API: PASSED (3 rules extracted)
+  >> PASS
+
+============================================================
+  TEST: 6. Full Pipeline on Real PDFs
+============================================================
+  No sample PDFs found, skipping pipeline test
+  >> PASS (no PDFs)
+
+============================================================
+  TEST: 7. API Routes
+============================================================
+[DB] SQLite schema ready at C:\Users\kusha\Desktop\sEM 6\Hackathon\Hackspace 2.0\Project\data\compliance.db
+  [7a] GET /policies: 200
+  [7b] GET /api/stats: 200
+  [7c] POST approve: 404 -> {'error': 'Rule not found or already approved'}
+  [7d] POST reject: 404 -> {'error': 'Rule not found'}
+  [7e] GET versions: 200 -> 2 versions
+  [7f] POST policy approve: 404 -> {'error': 'Policy not found or not in draft status'}
+  [7g] POST policy retire: 404 -> {'error': 'Policy not found'}
+  [7h] GET lineage: 200 -> R-TEST-001
+  [7i] GET audit: 200 -> 6 entries
+  [7j] POST extract (no file): 400 -> correct error
+  >> PASS
+
+
+============================================================
+  RESULTS: 7 passed, 0 failed out of 7 tests
+============================================================
+  ALL TESTS PASSED!

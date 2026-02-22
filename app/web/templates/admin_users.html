@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}User Management — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>User Management</h2>
+    <p class="subtitle" style="color: var(--text-muted); font-size: 12px;">Assign roles to users. Users sign up via the login page, then you add their email here to grant a role.</p>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Add or Update User</h3>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('admin_users_add') }}" method="POST" class="auth-form" style="max-width: 400px;">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" required placeholder="user@company.com" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <select name="role" class="form-control">
+                        <option value="analyst">Analyst</option>
+                        <option value="admin">Admin</option>
+                        <option value="risk_manager">Risk Manager</option>
+                        <option value="auditor">Auditor</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Add / Update</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Registered Users</h3>
+            <span class="badge badge-medium">{{ users|length }} user(s)</span>
+        </div>
+        <div class="card-body" style="padding: 0;">
+            {% if users %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Updated</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td class="mono" style="font-size: 11px;">{{ u.email }}</td>
+                        <td><span class="badge badge-{{ u.role }}">{{ u.role | replace('_', ' ') | upper }}</span></td>
+                        <td style="font-size: 10px; color: var(--text-muted);">{{ u.updated_at }}</td>
+                        <td>
+                            <form action="{{ url_for('admin_users_delete') }}" method="POST" style="display: inline;" onsubmit="return confirm('Remove this user?');">
+                                <input type="hidden" name="email" value="{{ u.email }}">
+                                <button type="submit" class="btn btn-sm" style="font-size: 10px; color: var(--severity-critical);">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="padding: 24px; color: var(--text-muted); font-size: 12px;">
+                No users in database. Add users above. Roles from .env (ADMIN_EMAILS, etc.) still apply if user is not in this table.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+# Vercel Deployment Requirements
+# ===================================
+# IMPORTANT: These are the minimal dependencies for Vercel's 250MB limit.
+# Heavy ML packages (lightgbm, shap, scikit-learn) are excluded.
+# The ML detection features will gracefully degrade to rule-engine only.
+#
+# To use ALL features, deploy to Railway, Render, or a VPS instead.
+#
+# Full requirements are in requirements.txt
+
+# Core web framework
+flask==3.1.0
+pydantic>=2.0
+
+# Data processing (lighter version)
+pandas==2.3.2
+
+# PDF processing for policy extraction
+pdfplumber==0.11.6
+
+# LLM policy extraction
+google-genai>=1.0.0
+
+# Scheduling
+apscheduler==3.11.0
+
+# Auth
+firebase-admin>=6.0.0
+
+# Optional OCR (comment out if not needed)
+# pytesseract>=0.3.10
+# Pillow>=10.0.0
+# pdf2image>=1.16.0

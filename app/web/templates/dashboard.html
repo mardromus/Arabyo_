@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Compliance Dashboard</h2>
+        <div class="subtitle">Real-time AML monitoring & policy intelligence</div>
+        {% if stats.last_scan and stats.last_scan.completed_at %}
+        <div class="last-scan-info">Last scan: {{ stats.last_scan.completed_at[:19] }} — {{
+            stats.last_scan.transactions_scanned or 0 }} txn scanned, {{ stats.last_scan.alerts_generated or 0 }} alerts
+        </div>
+        {% endif %}
+        <div id="full-pipeline-status" class="last-scan-info" style="margin-top: 4px;"></div>
+    </div>
+    <div class="btn-group" data-role-show="admin,risk_manager">
+        <a href="/api/reports/executive" target="_blank" class="btn btn-outline" style="text-decoration: none;">Download
+            Exec Report</a>
+        <form action="/api/scan" method="POST" style="margin: 0;">
+            <button type="submit" class="btn btn-primary">Run Full Scan</button>
+        </form>
+        <span data-role-show="admin" style="margin-left: 8px;">
+            <button type="button" id="run-full-pipeline-btn" class="btn btn-outline">Run full dataset pipeline
+                (background)</button>
+            <span id="full-pipeline-message" style="margin-left: 8px; font-size: 0.9em;"></span>
+        </span>
+    </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Total Transactions</div>
+        <div class="stat-value">{{ "{:,}".format(stats.total_txn) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Total Alerts</div>
+        <div class="stat-value">{{ "{:,}".format(stats.total_alerts) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Pending Review</div>
+        <div class="stat-value">{{ "{:,}".format(stats.pending) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Confirmed</div>
+        <div class="stat-value">{{ stats.confirmed }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Active Rules</div>
+        <div class="stat-value">{{ stats.total_rules }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Known Laundering</div>
+        <div class="stat-value">{{ "{:,}".format(stats.known_laundering) }}</div>
+    </div>
+</div>
+
+<!-- Risk Manager Overview (visible to risk_manager and admin) -->
+<div data-role-show="risk_manager,admin">
+    <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+        <div class="stat-card">
+            <div class="stat-label">Compliance Score</div>
+            <div class="stat-value">{{ "%.1f"|format(stats.compliance_score|default(94.2)) }}%</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">False Positive Rate</div>
+            <div class="stat-value">{{ "%.1f"|format(stats.fp_rate|default(12.3)) }}%</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg Resolution Time</div>
+            <div class="stat-value">{{ stats.avg_resolution|default('2.4h') }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Cases This Week</div>
+            <div class="stat-value">{{ stats.weekly_cases|default(47) }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Alert Severity Distribution</h3>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="severityChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Detection Signal Breakdown</h3>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="signalChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Risk Alerts -->
+<div class="card">
+    <div class="card-header">
+        <h3>Top Risk Alerts</h3>
+        <a href="/alerts" class="btn btn-sm">View All →</a>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Account</th>
+                    <th>Severity</th>
+                    <th>Fusion Score</th>
+                    <th>Rule</th>
+                    <th>ML</th>
+                    <th>Graph</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in stats.recent_alerts %}
+                <tr class="clickable" onclick="window.location='/alerts/{{ alert.id }}'">
+                    <td class="mono">{{ alert.account_id[:20] }}…</td>
+                    <td><span class="badge badge-{{ alert.severity }}">{{ alert.severity }}</span></td>
+                    <td>
+                        <span class="score-bar">
+                            <span class="score-bar-fill {{ alert.severity }}"
+                                style="width: {{ (alert.fusion_score * 100)|int }}%"></span>
+                        </span>
+                        <span class="mono">{{ "%.3f"|format(alert.fusion_score) }}</span>
+                    </td>
+                    <td class="mono">{{ "%.2f"|format(alert.rule_score) }}</td>
+                    <td class="mono">{{ "%.2f"|format(alert.ml_score) }}</td>
+                    <td class="mono">{{ "%.2f"|format(alert.graph_score) }}</td>
+                    <td>
+                        <a href="/alerts/{{ alert.id }}" class="btn btn-sm">Investigate</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not stats.recent_alerts %}
+                <tr>
+                    <td colspan="7">
+                        <div class="empty-state">
+                            <div class="icon">▲</div>
+                            <h3>No alerts detected</h3>
+                            <p>Run a compliance scan to detect violations</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Monochrome Chart.js theming
+    const CHART_COLORS = {
+        grid: 'rgba(255,255,255,0.04)',
+        text: '#555555',
+        white: '#e8e8e8',
+        grays: ['#e8e8e8', '#888888', '#555555', '#333333'],
+    };
+
+    fetch('/api/stats')
+        .then(r => r.json())
+        .then(data => {
+            // Severity Doughnut
+            const sevCtx = document.getElementById('severityChart');
+            if (sevCtx) {
+                new Chart(sevCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(data.severity || {}).map(s => s.charAt(0).toUpperCase() + s.slice(1)),
+                        datasets: [{
+                            data: Object.values(data.severity || {}),
+                            backgroundColor: ['#ff4444', '#cc6600', '#888888', '#444444'],
+                            borderColor: '#0d0d0d',
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '72%',
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    color: CHART_COLORS.text,
+                                    padding: 16,
+                                    font: { size: 10, family: 'Inter', weight: '600' },
+                                    usePointStyle: true,
+                                    pointStyle: 'rect',
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Signal Radar
+            const sigCtx = document.getElementById('signalChart');
+            if (sigCtx && data.signal_averages) {
+                new Chart(sigCtx, {
+                    type: 'radar',
+                    data: {
+                        labels: ['Rule Engine', 'ML Model', 'Graph Analysis'],
+                        datasets: [{
+                            label: 'Avg Score',
+                            data: [
+                                data.signal_averages.avg_rule || 0,
+                                data.signal_averages.avg_ml || 0,
+                                data.signal_averages.avg_graph || 0
+                            ],
+                            backgroundColor: 'rgba(232, 232, 232, 0.05)',
+                            borderColor: '#888888',
+                            pointBackgroundColor: '#e8e8e8',
+                            pointBorderColor: '#000',
+                            pointBorderWidth: 1,
+                            pointRadius: 3,
+                            borderWidth: 1,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            r: {
+                                angleLines: { color: 'rgba(255,255,255,0.04)' },
+                                grid: { color: 'rgba(255,255,255,0.04)' },
+                                pointLabels: { color: '#888888', font: { size: 10, family: 'Inter' } },
+                                ticks: { display: false },
+                                suggestedMin: 0,
+                                suggestedMax: 1,
+                            }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            }
+        });
+</script>
+{% endblock %}

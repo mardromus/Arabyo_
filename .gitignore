@@ -1,0 +1,51 @@
+# ── Sensitive & Secrets ─────────────────────────────────────────
+.env
+credentials/
+**/firebase-adminsdk*.json
+
+# ── Dataset (too large for git) ──────────────────────────────────
+Dataset/
+
+# ── Runtime data ─────────────────────────────────────────────────
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# ── ML Models (binary artifacts) ─────────────────────────────────
+models/*.pkl
+models/*.joblib
+models/*.parquet
+
+# ── Generated reports & temp files ───────────────────────────────
+reports/
+temp.json
+temp2.json
+*.pdf
+
+# ── Python ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Logs & debug ─────────────────────────────────────────────────
+*.log
+test_genai_out.txt
+test_output.txt
+test_result.txt
+
+# ── OS ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp

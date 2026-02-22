@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Audit Trail — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Audit Trail</h2>
+        <div class="subtitle">Immutable compliance activity log · Full traceability</div>
+    </div>
+    <div class="btn-group">
+        <button class="btn btn-sm" onclick="exportAudit('json')">↓ Export JSON</button>
+        <button class="btn btn-sm" onclick="exportAudit('csv')">↓ Export CSV</button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="filters-bar">
+    <span class="filter-label">Action</span>
+    <a href="/audit" class="filter-chip {% if not action_filter %}active{% endif %}">All</a>
+    <a href="/audit?action=register_policy"
+        class="filter-chip {% if action_filter == 'register_policy' %}active{% endif %}">Register</a>
+    <a href="/audit?action=approve" class="filter-chip {% if action_filter == 'approve' %}active{% endif %}">Approve</a>
+    <a href="/audit?action=reject" class="filter-chip {% if action_filter == 'reject' %}active{% endif %}">Reject</a>
+    <a href="/audit?action=retire" class="filter-chip {% if action_filter == 'retire' %}active{% endif %}">Retire</a>
+    <a href="/audit?action=supersede_rule"
+        class="filter-chip {% if action_filter == 'supersede_rule' %}active{% endif %}">Supersede</a>
+    <div class="filter-sep"></div>
+    <span class="filter-label">Search</span>
+    <form style="display: inline;" method="GET" action="/audit">
+        <input type="text" name="q" class="form-control" placeholder="Policy ID, Rule ID, or actor…"
+            style="width: 240px; padding: 3px 10px; font-size: 11px;" value="{{ search_query|default('') }}">
+    </form>
+</div>
+
+<!-- Audit Log Table -->
+<div class="card">
+    <div class="card-header">
+        <h3>Activity Log ({{ audit_entries|length }} entries)</h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Action</th>
+                    <th>Policy</th>
+                    <th>Rule</th>
+                    <th>Details</th>
+                    <th>Actor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in audit_entries %}
+                <tr>
+                    <td class="mono" style="font-size: 10px; white-space: nowrap;">{{ entry.timestamp[:19] }}</td>
+                    <td>
+                        {% if 'approve' in entry.action %}
+                        <span class="badge badge-approved">{{ entry.action }}</span>
+                        {% elif 'reject' in entry.action %}
+                        <span class="badge badge-critical">{{ entry.action }}</span>
+                        {% elif 'retire' in entry.action %}
+                        <span class="badge badge-retired">{{ entry.action }}</span>
+                        {% elif 'register' in entry.action %}
+                        <span class="badge badge-draft">{{ entry.action }}</span>
+                        {% elif 'supersede' in entry.action %}
+                        <span class="badge badge-superseded">{{ entry.action }}</span>
+                        {% elif 'pipeline' in entry.action %}
+                        <span class="badge badge-medium">{{ entry.action }}</span>
+                        {% else %}
+                        <span class="badge badge-medium">{{ entry.action }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono" style="font-size: 10px;">{{ entry.policy_id or '—' }}</td>
+                    <td class="mono" style="font-size: 10px;">{{ entry.rule_id or '—' }}</td>
+                    <td
+                        style="font-size: 11px; color: var(--text-secondary); max-width: 300px; overflow: hidden; text-overflow: ellipsis;">
+                        {% if entry.details %}
+                        {% if entry.details is string %}
+                        {{ entry.details[:120] }}
+                        {% else %}
+                        {{ entry.details | tojson }}
+                        {% endif %}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td class="mono" style="font-size: 10px;">{{ entry.performed_by or 'system' }}</td>
+                </tr>
+                {% endfor %}
+                {% if not audit_entries %}
+                <tr>
+                    <td colspan="6">
+                        <div class="empty-state">
+                            <div class="icon">◇</div>
+                            <h3>No audit entries found</h3>
+                            <p>Activity will appear here as policies and rules are managed</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Lineage Section -->
+{% if lineage_data %}
+<div class="card" style="margin-top: 16px;">
+    <div class="card-header">
+        <h3>Rule Lineage Chain</h3>
+    </div>
+    <div class="card-body">
+        <div class="version-timeline">
+            {% for item in lineage_data %}
+            <div class="version-item {% if loop.last %}current{% endif %}">
+                <div class="version-label">{{ item.rule_id }}</div>
+                <div class="version-meta">
+                    {{ item.change_reason|default('Initial version') }} · {{ item.created_at[:16] if item.created_at
+                    else '' }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function exportAudit(format) {
+        // Collect visible audit data and download
+        const rows = document.querySelectorAll('.data-table tbody tr');
+        let data = [];
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 6) {
+                data.push({
+                    timestamp: cells[0].textContent.trim(),
+                    action: cells[1].textContent.trim(),
+                    policy_id: cells[2].textContent.trim(),
+                    rule_id: cells[3].textContent.trim(),
+                    details: cells[4].textContent.trim(),
+                    actor: cells[5].textContent.trim(),
+                });
+            }
+        });
+
+        let content, type, ext;
+        if (format === 'csv') {
+            const headers = ['timestamp', 'action', 'policy_id', 'rule_id', 'details', 'actor'];
+            content = headers.join(',') + '\n' + data.map(r =>
+                headers.map(h => `"${(r[h] || '').replace(/"/g, '""')}"`).join(',')
+            ).join('\n');
+            type = 'text/csv';
+            ext = 'csv';
+        } else {
+            content = JSON.stringify(data, null, 2);
+            type = 'application/json';
+            ext = 'json';
+        }
+
+        const blob = new Blob([content], { type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audit_trail_${new Date().toISOString().slice(0, 10)}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+</script>
+{% endblock %}

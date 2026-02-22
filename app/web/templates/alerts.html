@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Alerts — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Alert Queue</h2>
+        <div class="subtitle">{{ total }} alerts • Page {{ page }} • Investigation workflow</div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="filters-bar">
+    <span class="filter-label">Severity</span>
+    <a href="/alerts" class="filter-chip {% if not severity_filter and not status_filter %}active{% endif %}">All</a>
+    <a href="/alerts?severity=critical"
+        class="filter-chip {% if severity_filter=='critical' %}active{% endif %}">Critical</a>
+    <a href="/alerts?severity=high" class="filter-chip {% if severity_filter=='high' %}active{% endif %}">High</a>
+    <a href="/alerts?severity=medium" class="filter-chip {% if severity_filter=='medium' %}active{% endif %}">Medium</a>
+    <a href="/alerts?severity=low" class="filter-chip {% if severity_filter=='low' %}active{% endif %}">Low</a>
+    <div class="filter-sep"></div>
+    <span class="filter-label">Status</span>
+    <a href="/alerts?status=pending" class="filter-chip {% if status_filter=='pending' %}active{% endif %}">Pending</a>
+    <a href="/alerts?status=confirmed"
+        class="filter-chip {% if status_filter=='confirmed' %}active{% endif %}">Confirmed</a>
+    <a href="/alerts?status=dismissed"
+        class="filter-chip {% if status_filter=='dismissed' %}active{% endif %}">Dismissed</a>
+</div>
+
+<!-- Alert Table -->
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <table class="data-table" id="alertsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Account</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Fusion</th>
+                    <th>Rule</th>
+                    <th>ML</th>
+                    <th>Graph</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alert in alerts %}
+                <tr class="clickable" onclick="window.location='/alerts/{{ alert.id }}'">
+                    <td class="mono">#{{ alert.id }}</td>
+                    <td class="mono" style="max-width: 160px; overflow: hidden; text-overflow: ellipsis;">{{
+                        alert.account_id[:25] }}</td>
+                    <td><span class="badge badge-{{ alert.severity }}">{{ alert.severity }}</span></td>
+                    <td><span class="badge badge-{{ alert.status }}">{{ alert.status }}</span></td>
+                    <td>
+                        <span class="score-bar">
+                            <span class="score-bar-fill {{ alert.severity }}"
+                                style="width: {{ (alert.fusion_score * 100)|int }}%"></span>
+                        </span>
+                        <span class="mono">{{ "%.3f"|format(alert.fusion_score) }}</span>
+                    </td>
+                    <td class="mono">{{ "%.2f"|format(alert.rule_score) }}</td>
+                    <td class="mono">{{ "%.2f"|format(alert.ml_score) }}</td>
+                    <td class="mono">{{ "%.2f"|format(alert.graph_score) }}</td>
+                    <td class="mono" style="color: var(--text-muted); font-size: 10px;">{{ alert.created_at[:16] }}</td>
+                    <td>
+                        <a href="/alerts/{{ alert.id }}" class="btn btn-sm">→</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not alerts %}
+                <tr>
+                    <td colspan="10">
+                        <div class="empty-state">
+                            <div class="icon">▲</div>
+                            <h3>No alerts found</h3>
+                            <p>Adjust filters or run a compliance scan</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if total > per_page %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="/alerts?page={{ page-1 }}&severity={{ severity_filter }}&status={{ status_filter }}">← Prev</a>
+    {% endif %}
+
+    {% set total_pages = (total / per_page)|int + (1 if total % per_page > 0 else 0) %}
+
+    {% set start_page = page - 3 %}
+    {% set end_page = page + 3 %}
+    {% if start_page < 1 %}{% set start_page=1 %}{% endif %} {% if end_page> total_pages %}{% set end_page = total_pages
+        %}{% endif %}
+
+        {% if start_page > 1 %}
+        <a href="/alerts?page=1&severity={{ severity_filter }}&status={{ status_filter }}">1</a>
+        {% if start_page > 2 %}<span style="color:var(--text-muted); margin:0 8px;">...</span>{% endif %}
+        {% endif %}
+
+        {% for p in range(start_page, end_page + 1) %}
+        {% if p == page %}
+        <span class="current">{{ p }}</span>
+        {% else %}
+        <a href="/alerts?page={{ p }}&severity={{ severity_filter }}&status={{ status_filter }}">{{ p }}</a>
+        {% endif %}
+        {% endfor %}
+
+        {% if end_page < total_pages %} {% if end_page < total_pages - 1 %}<span
+            style="color:var(--text-muted); margin:0 8px;">...</span>{% endif %}
+            <a href="/alerts?page={{ total_pages }}&severity={{ severity_filter }}&status={{ status_filter }}">{{
+                total_pages }}</a>
+            {% endif %}
+
+            {% if page < total_pages %} <a
+                href="/alerts?page={{ page+1 }}&severity={{ severity_filter }}&status={{ status_filter }}">Next →</a>
+                {% endif %}
+</div>
+{% endif %}
+{% endblock %}

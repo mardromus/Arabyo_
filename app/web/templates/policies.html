@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+{% block title %}Policies & Rules — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Policies & Rules</h2>
+        <div class="subtitle">{{ policies|length }} policy documents · {{ rules|length }} rules extracted</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Upload Section (role-gated) -->
+    <div class="card" data-role-hide="auditor">
+        <div class="card-header">
+            <h3>Upload Policy Document</h3>
+        </div>
+        <div class="card-body">
+            <form action="/policies/upload" method="POST" enctype="multipart/form-data" id="uploadForm">
+                <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+                    <div class="icon">■</div>
+                    <h3>Drop PDF here or click to upload</h3>
+                    <p>Text & scanned PDFs · OCR auto-detection · LLM semantic extraction</p>
+                    <input type="file" name="policy_file" id="fileInput" accept=".pdf" style="display: none;"
+                        onchange="handleUpload(this)">
+                </div>
+                <div id="uploadStatus" style="display:none; margin-top: 12px; text-align: center;">
+                    <div
+                        style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">
+                        <span class="loading-spinner" style="margin-right: 8px;"></span>
+                        Processing — Extracting rules from document
+                    </div>
+                    <div id="uploadProgress" style="margin-top: 8px;">
+                        <div style="font-size: 10px; color: var(--text-muted);">
+                            <span id="stage-ocr" class="pulse">◇ OCR</span> →
+                            <span id="stage-parse">◇ Parse</span> →
+                            <span id="stage-extract">◇ Extract</span> →
+                            <span id="stage-validate">◇ Validate</span>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Auditor read-only notice -->
+    <div data-role-show="auditor" class="card">
+        <div class="card-header">
+            <h3>Policy Upload</h3>
+        </div>
+        <div class="card-body">
+            <div
+                style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; text-align: center; padding: 24px;">
+                Read-only mode — Contact Admin to upload policies
+            </div>
+        </div>
+    </div>
+
+    <!-- Uploaded Policies -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Policy Registry</h3>
+            <span class="badge badge-medium">{{ policies|length }}</span>
+            {% if policies|length > 5 %}
+            <span style="font-size: 9px; color: var(--text-muted); margin-left: 8px;">(scrollable)</span>
+            {% endif %}
+        </div>
+        <div class="card-body policy-list-scrollable">
+            {% if policies %}
+            {% for policy in policies %}
+            <div class="rule-card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <div class="rule-name">{{ policy.filename }}</div>
+                        <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                            {{ policy.page_count }} pages · {{ policy.uploaded_at[:16] }}
+                            {% if policy.policy_id %} · <span class="mono">{{ policy.policy_id }}</span>{% endif %}
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                        {% if policy.policy_status is defined and policy.policy_status %}
+                        <span class="badge badge-{{ policy.policy_status }}">{{ policy.policy_status }}</span>
+                        {% else %}
+                        <span class="badge badge-{{ policy.status }}">{{ policy.status }}</span>
+                        {% endif %}
+                        {% if policy.version is defined and policy.version %}
+                        <span class="mono" style="font-size: 10px; color: var(--text-muted);">v{{ policy.version
+                            }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if policy.checksum is defined and policy.checksum %}
+                <div style="font-size: 9px; color: var(--text-faint); font-family: var(--font-mono); margin-top: 4px;">
+                    SHA: {{ policy.checksum[:16] }}…
+                </div>
+                {% endif %}
+                <!-- Policy actions (role-gated) -->
+                <div style="margin-top: 6px; display: flex; gap: 4px;" data-role-show="admin,risk_manager">
+                    {% if policy.policy_status in ('draft', None, '') or policy.status in ('draft', None, '') %}
+                    <button class="btn btn-xs btn-primary"
+                        onclick="approvePolicy('{{ policy.policy_id or policy.id }}')">Approve</button>
+                    {% endif %}
+                    {% if policy.policy_status in ('approved', 'active') or policy.status in ('approved', 'active') %}
+                    <button class="btn btn-xs"
+                        onclick="retirePolicy('{{ policy.policy_id or policy.id }}')">Retire</button>
+                    {% endif %}
+                    <button class="btn btn-xs btn-outline"
+                        style="color: var(--severity-critical); border-color: rgba(255, 68, 68, 0.2);"
+                        onclick="deletePolicy('{{ policy.policy_id or policy.id }}')">Delete</button>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">■</div>
+                <h3>No policies uploaded</h3>
+                <p>Upload a PDF to extract compliance rules</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Extracted Rules Table -->
+<div class="card" style="margin-top: 16px;">
+    <div class="card-header">
+        <h3>Compliance Rules ({{ rules|length }})</h3>
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <!-- Sorting controls -->
+            <div style="display: flex; gap: 4px; align-items: center; font-size: 10px;">
+                <span style="color: var(--text-muted);">Sort by:</span>
+                <select id="sortSelect" onchange="applySort()"
+                    style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 8px; border-radius: var(--radius); font-size: 10px;">
+                    <option value="severity" {% if sort_by=='severity' %}selected{% endif %}>Severity</option>
+                    <option value="confidence" {% if sort_by=='confidence' %}selected{% endif %}>Confidence</option>
+                    <option value="status" {% if sort_by=='status' %}selected{% endif %}>Status</option>
+                    <option value="type" {% if sort_by=='type' %}selected{% endif %}>Type</option>
+                    <option value="date" {% if sort_by=='date' %}selected{% endif %}>Date</option>
+                    <option value="name" {% if sort_by=='name' %}selected{% endif %}>Name</option>
+                </select>
+                <button onclick="toggleOrder()"
+                    style="background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 8px; border-radius: var(--radius); font-size: 10px; cursor: pointer;">
+                    {{ '↓' if order == 'desc' else '↑' }}
+                </button>
+            </div>
+            <!-- Approval flow legend -->
+            <div class="approval-flow">
+                <span class="approval-step">Draft</span>
+                <span class="approval-arrow">→</span>
+                <span class="approval-step">Review</span>
+                <span class="approval-arrow">→</span>
+                <span class="approval-step">Approved</span>
+                <span class="approval-arrow">→</span>
+                <span class="approval-step">Active</span>
+            </div>
+            <button class="btn btn-xs btn-outline"
+                style="color: var(--severity-critical); border-color: rgba(255, 68, 68, 0.2);" data-role-show="admin"
+                onclick="clearAllData()">Bulk Clear</button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Rule ID</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Severity</th>
+                    <th>Confidence</th>
+                    <th>Source</th>
+                    <th>Governance</th>
+                    <th>Status</th>
+                    <th>Flags</th>
+                    <th data-role-hide="auditor">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rule in rules %}
+                <tr>
+                    <td class="mono" style="font-size: 10px;">{{ rule.id }}</td>
+                    <td>
+                        <div style="font-weight: 600; font-size: 12px;">{{ rule.name }}</div>
+                        {% if rule.summary %}
+                        <div class="rule-summary" style="margin-top: 6px; max-width: 500px;">
+                            {{ rule.summary | safe }}
+                        </div>
+                        {% elif rule.source_text %}
+                        <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                            title="{{ rule.source_text }}">
+                            {{ rule.source_text[:80] }}…
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td><span class="badge badge-medium">{{ rule.rule_type }}</span></td>
+                    <td><span class="badge badge-{{ rule.severity or 'medium' }}">{{ rule.severity or 'medium' }}</span>
+                    </td>
+                    <td>
+                        {% if rule.confidence is defined and rule.confidence is not none %}
+                        <div class="confidence-meter">
+                            <span class="confidence-bar"><span class="confidence-fill"
+                                    style="width: {{ (rule.confidence * 100)|int }}%"></span></span>
+                            <span>{{ "%.0f"|format(rule.confidence * 100) }}%</span>
+                        </div>
+                        {% else %}
+                        <span style="color: var(--text-faint);">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono" style="font-size: 10px; color: var(--text-muted);">
+                        {{ rule.source_document }} p.{{ rule.source_page }}
+                    </td>
+                    <td>
+                        <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                            <span class="badge badge-{{ rule.gov_status or 'draft' }}">{{ rule.gov_status or 'draft'
+                                }}</span>
+                            <span class="mono" style="font-size:9px; color:var(--text-muted);" title="Policy Version">{{
+                                rule.gov_version_id or 'Standalone' }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        {% if rule.status == 'active' or rule.status == 'approved' %}
+                        <span class="badge badge-active">{{ rule.status }}</span>
+                        {% elif rule.status == 'review' %}
+                        <span class="badge badge-review">review</span>
+                        {% elif rule.status == 'draft' %}
+                        <span class="badge badge-draft">draft</span>
+                        {% elif rule.status == 'retired' %}
+                        <span class="badge badge-retired">retired</span>
+                        {% elif rule.status == 'superseded' %}
+                        <span class="badge badge-superseded">superseded</span>
+                        {% else %}
+                        <span class="badge badge-medium">{{ rule.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if rule.review_required %}<span class="flag-review">⚠ Review</span>{% endif %}
+                        {% if rule.ambiguous %}<span class="flag-ambiguous">◇ Ambig</span>{% endif %}
+                        {% if not rule.review_required and not rule.ambiguous %}
+                        <span style="color: var(--text-faint);">—</span>
+                        {% endif %}
+                    </td>
+                    <td data-role-hide="auditor">
+                        {% if rule.status != 'active' and rule.status != 'approved' %}
+                        <div class="btn-group">
+                            <button class="btn btn-xs btn-primary" onclick="approveRule('{{ rule.id }}')">✓</button>
+                            <button class="btn btn-xs" onclick="rejectRule('{{ rule.id }}')">✕</button>
+                        </div>
+                        {% else %}
+                        <span style="color: var(--text-faint);">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not rules %}
+                <tr>
+                    <td colspan="10">
+                        <div class="empty-state">
+                            <div class="icon">■</div>
+                            <h3>No rules extracted</h3>
+                            <p>Upload a policy document to extract compliance rules</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function applySort() {
+        const sortBy = document.getElementById('sortSelect').value;
+        const url = new URL(window.location);
+        url.searchParams.set('sort', sortBy);
+        url.searchParams.set('order', '{{ order }}');
+        window.location.href = url.toString();
+    }
+
+    function toggleOrder() {
+        const currentOrder = '{{ order }}';
+        const newOrder = currentOrder === 'desc' ? 'asc' : 'desc';
+        const url = new URL(window.location);
+        url.searchParams.set('sort', '{{ sort_by }}');
+        url.searchParams.set('order', newOrder);
+        window.location.href = url.toString();
+    }
+
+    function handleUpload(input) {
+        if (input.files && input.files[0]) {
+            document.getElementById('uploadStatus').style.display = 'block';
+            document.getElementById('uploadForm').submit();
+        }
+    }
+
+    function apiUrl(path) {
+        const role = document.body.dataset.role;
+        if (role && path.indexOf('?') === -1) return path + '?role=' + encodeURIComponent(role);
+        return path;
+    }
+
+    function approveRule(ruleId) {
+        fetch(apiUrl(`/api/rules/${ruleId}/approve`), { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'approved') location.reload();
+                else if (data.error) alert(data.error);
+            }).catch(e => alert('Request failed: ' + e.message));
+    }
+
+    function rejectRule(ruleId) {
+        if (confirm('Reject this rule? It will be marked inactive.')) {
+            fetch(apiUrl(`/api/rules/${ruleId}/reject`), { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'rejected') location.reload();
+                    else if (data.error) alert(data.error);
+                }).catch(e => alert('Request failed: ' + e.message));
+        }
+    }
+
+    function approvePolicy(policyId) {
+        fetch(apiUrl(`/api/policies/${encodeURIComponent(policyId)}/approve`), { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'approved') location.reload();
+                else if (data.error) alert(data.error);
+            }).catch(e => alert('Request failed: ' + e.message));
+    }
+
+    function retirePolicy(policyId) {
+        if (confirm('Retire this policy? It will no longer be active.')) {
+            fetch(apiUrl(`/api/policies/${encodeURIComponent(policyId)}/retire`), { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'retired') location.reload();
+                    else if (data.error) alert(data.error);
+                }).catch(e => alert('Request failed: ' + e.message));
+        }
+    }
+
+    function deletePolicy(policyId) {
+        if (confirm('PERMANENTLY DELETE this policy document and all its extracted rules? This cannot be undone.')) {
+            fetch(apiUrl(`/api/policies/${encodeURIComponent(policyId)}/delete`), { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'deleted') location.reload();
+                    else if (data.error) alert(data.error);
+                }).catch(e => alert('Request failed: ' + e.message));
+        }
+    }
+
+    function clearAllData() {
+        if (confirm('NUCLEAR OPTION: PERMANENTLY DELETE ALL policy documents, associated PDF files, rules, and rule versions? This will completely wipe your compliance knowledge base.')) {
+            if (confirm('Are you absolutely sure? This is irreversible.')) {
+                fetch(apiUrl('/api/policies/clear-all'), { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'wiped') location.reload();
+                        else if (data.error) alert(data.error);
+                    }).catch(e => alert('Request failed: ' + e.message));
+            }
+        }
+    }
+</script>
+{% endblock %}

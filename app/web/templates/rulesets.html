@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Rule Sets — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Rule Sets</h2>
+        <div class="subtitle">Version-controlled rule sets derived from policies</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>All Rule Sets</h3>
+        <span class="badge badge-medium">{{ rulesets|length }}</span>
+    </div>
+    <div class="card-body">
+        {% if rulesets %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Ruleset ID</th>
+                    <th>Policy</th>
+                    <th>Version</th>
+                    <th>Status</th>
+                    <th>Rules</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rs in rulesets %}
+                <tr>
+                    <td class="mono">{{ rs.id }}</td>
+                    <td>{{ rs.policy_id or '—' }}</td>
+                    <td>{{ rs.ruleset_version or '—' }}</td>
+                    <td>
+                        <span class="badge {% if rs.status == 'active' %}badge-high{% elif rs.status == 'draft' %}badge-medium{% else %}badge-low{% endif %}">
+                            {{ rs.status }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if rs.rule_ids is string %}
+                        —
+                        {% else %}
+                        {{ (rs.rule_ids or [])|length }}
+                        {% endif %}
+                    </td>
+                    <td>{{ (rs.created_at or '')[:16] }}</td>
+                    <td>
+                        <a href="{{ url_for('ruleset_detail', ruleset_id=rs.id) }}" class="btn btn-sm">View</a>
+                        <a href="{{ url_for('ruleset_diff_page') }}?id1={{ rs.id }}" class="btn btn-sm btn-outline compare-link" data-ruleset-id="{{ rs.id }}">Compare</a>
+                        {% if user_role == 'admin' and rs.status != 'active' %}
+                        <button type="button" class="btn btn-sm btn-primary activate-btn" data-ruleset-id="{{ rs.id }}">Activate</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No rule sets yet. Rule sets are created when you upload and process policy documents.</p>
+        <p><a href="{{ url_for('policies') }}">Go to Policies & Rules</a> to upload a policy.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Compare Rule Sets</h3>
+    </div>
+    <div class="card-body">
+        <form action="{{ url_for('ruleset_diff_page') }}" method="GET" class="form-inline">
+            <label>Ruleset 1:</label>
+            <select name="id1" id="diff-id1">
+                <option value="">— Select —</option>
+                {% for rs in rulesets %}
+                <option value="{{ rs.id }}">{{ rs.id }}</option>
+                {% endfor %}
+            </select>
+            <label style="margin-left: 12px;">Ruleset 2:</label>
+            <select name="id2" id="diff-id2">
+                <option value="">— Select —</option>
+                {% for rs in rulesets %}
+                <option value="{{ rs.id }}">{{ rs.id }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary" style="margin-left: 12px;">Compare</button>
+        </form>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/rulesets.js') }}"></script>
+{% endblock %}

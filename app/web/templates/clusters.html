@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+{% block title %}Alert Clusters — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Alert Cluster Resolution</h2>
+        <div class="subtitle">Group similar alerts for bulk review &amp; resolution</div>
+    </div>
+    <div class="btn-group">
+        <button type="button" id="run-clustering-btn" class="btn btn-primary">Run Clustering</button>
+        <select id="filter-status" class="btn btn-outline" onchange="loadClusters()">
+            <option value="open">Open Clusters</option>
+            <option value="resolved">Resolved</option>
+            <option value="all">All</option>
+        </select>
+    </div>
+</div>
+
+<!-- Metrics Cards -->
+<div class="stats-grid" id="cluster-metrics">
+    <div class="stat-card">
+        <div class="stat-label">Total Clusters</div>
+        <div class="stat-value" id="m-total">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Open Clusters</div>
+        <div class="stat-value" id="m-open">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Alerts Clustered</div>
+        <div class="stat-value" id="m-alerts">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Avg Cluster Size</div>
+        <div class="stat-value" id="m-avg">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Cluster Purity</div>
+        <div class="stat-value" id="m-purity">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Workload Reduction</div>
+        <div class="stat-value" id="m-reduction">—</div>
+    </div>
+</div>
+
+<!-- Cluster List -->
+<div class="card" style="margin-top: 24px;">
+    <div class="card-header">
+        <h3>Clusters <span id="cluster-count" style="color: var(--text-muted); font-weight: normal;"></span></h3>
+    </div>
+    <table class="data-table" id="clusters-table">
+        <thead>
+            <tr>
+                <th>Cluster</th>
+                <th>Size</th>
+                <th>Priority</th>
+                <th>Avg Risk</th>
+                <th>Max Risk</th>
+                <th>Dominant Rule</th>
+                <th>Severity</th>
+                <th>Homogeneity</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="clusters-body"></tbody>
+    </table>
+</div>
+
+<!-- Cluster Detail Modal -->
+<div id="cluster-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content" style="max-width:900px; max-height:85vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:16px;">
+                <h3 id="modal-title" style="margin:0;"></h3>
+                <a id="modal-export-btn" href="#" target="_blank" class="btn btn-sm btn-outline"
+                    style="padding:4px 12px; font-size:11px; text-decoration:none;">Download Report</a>
+            </div>
+            <button onclick="closeModal()" class="btn btn-outline" style="padding:4px 12px;">&times;</button>
+        </div>
+        <div id="modal-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(4px);
+    }
+
+    .modal-content {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-strong);
+        border-radius: 12px;
+        padding: 24px;
+        width: 90%;
+    }
+
+    .reason-tag {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-primary);
+        border: 1px solid var(--border-strong);
+        border-radius: 6px;
+        padding: 3px 10px;
+        margin: 2px;
+        font-size: 12px;
+    }
+
+    .risk-bar {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--border);
+        overflow: hidden;
+    }
+
+    .risk-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.3s;
+    }
+
+    .cluster-row {
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+
+    .cluster-row:hover {
+        background: rgba(99, 102, 241, 0.08) !important;
+    }
+
+    .badge-open {
+        background: rgba(34, 197, 94, 0.15);
+        color: #22c55e;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .badge-resolved {
+        background: rgba(148, 163, 184, 0.15);
+        color: #94a3b8;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .badge-escalated {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .action-btn {
+        padding: 3px 10px;
+        font-size: 11px;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+        margin: 1px;
+        transition: all 0.15s;
+    }
+
+    .action-btn:hover {
+        background: rgba(99, 102, 241, 0.15);
+        border-color: #6366f1;
+    }
+
+    .action-btn.confirm {
+        color: #22c55e;
+        border-color: rgba(34, 197, 94, 0.3);
+    }
+
+    .action-btn.dismiss {
+        color: #f59e0b;
+        border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    .action-btn.escalate {
+        color: #ef4444;
+        border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .member-row td {
+        font-size: 12px;
+        padding: 6px 8px !important;
+    }
+</style>
+<script>
+    const API = '/api';
+    let currentClusters = [];
+
+    async function loadMetrics() {
+        try {
+            const r = await fetch(API + '/clusters/metrics');
+            const m = await r.json();
+            document.getElementById('m-total').textContent = m.total_clusters || 0;
+            document.getElementById('m-open').textContent = (m.by_status || {}).open || 0;
+            document.getElementById('m-alerts').textContent = (m.alerts_clustered || 0).toLocaleString();
+            document.getElementById('m-avg').textContent = m.avg_cluster_size || 0;
+            document.getElementById('m-purity').textContent = ((m.avg_cluster_purity || 0) * 100).toFixed(0) + '%';
+            document.getElementById('m-reduction').textContent = m.workload_reduction || '—';
+        } catch (e) { console.error(e); }
+    }
+
+    async function loadClusters() {
+        const status = document.getElementById('filter-status').value;
+        try {
+            const r = await fetch(API + '/alerts/clusters?status=' + status + '&limit=200');
+            currentClusters = await r.json();
+            document.getElementById('cluster-count').textContent = '(' + currentClusters.length + ')';
+            const tbody = document.getElementById('clusters-body');
+            tbody.innerHTML = currentClusters.map(c => {
+                const expl = c.explanation || {};
+                const reasons = (expl.cluster_reason || []).slice(0, 2).join(', ');
+                const riskPct = (c.mean_risk * 100).toFixed(0);
+                const riskColor = c.mean_risk > 0.7 ? '#ef4444' : c.mean_risk > 0.4 ? '#f59e0b' : '#22c55e';
+                const statusBadge = c.status === 'open' ? 'badge-open' :
+                    c.status === 'resolved' ? 'badge-resolved' : 'badge-escalated';
+                return `<tr class="cluster-row" onclick="openCluster('${c.cluster_id}')">
+                <td><strong>${c.cluster_id}</strong><br><small style="color:var(--text-muted)">${reasons}</small></td>
+                <td>${c.cluster_size}</td>
+                <td><div class="risk-bar" style="width:60px"><div class="risk-fill" style="width:${(c.priority_score * 100).toFixed(0)}%;background:${riskColor}"></div></div>
+                    <small>${c.priority_score.toFixed(3)}</small></td>
+                <td>${c.mean_risk.toFixed(4)}</td>
+                <td>${c.max_risk.toFixed(4)}</td>
+                <td><small>${(c.dominant_rule || '').substring(0, 20)}</small></td>
+                <td><span class="severity-badge ${c.dominant_severity}">${c.dominant_severity}</span></td>
+                <td>${(c.rule_homogeneity * 100).toFixed(0)}%</td>
+                <td><span class="${statusBadge}">${c.status}</span></td>
+                <td onclick="event.stopPropagation()">
+                    ${c.status === 'open' ? `
+                    <button class="action-btn confirm" onclick="resolveCluster('${c.cluster_id}','confirm')">Confirm</button>
+                    <button class="action-btn dismiss" onclick="resolveCluster('${c.cluster_id}','dismiss')">Dismiss</button>
+                    <button class="action-btn escalate" onclick="resolveCluster('${c.cluster_id}','escalate')">Escalate</button>
+                    ` : '—'}
+                </td>
+            </tr>`;
+            }).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    async function openCluster(cid) {
+        try {
+            const [r, xr] = await Promise.all([
+                fetch(API + '/clusters/' + cid),
+                fetch(API + '/clusters/' + cid + '/explain')
+            ]);
+            const c = await r.json();
+            const x = await xr.json();
+            const expl = c.explanation || {};
+            const pat = x.dominant_pattern || {};
+            const risk = x.risk_assessment || {};
+            document.getElementById('modal-title').textContent = c.cluster_id + ' — ' + c.cluster_size + ' alerts';
+            document.getElementById('modal-export-btn').href = '/api/clusters/' + cid + '/report';
+            document.getElementById('modal-body').innerHTML = `
+            <div class="stats-grid" style="grid-template-columns: repeat(4,1fr); margin-bottom:16px;">
+                <div class="stat-card"><div class="stat-label">Avg Risk</div><div class="stat-value">${c.mean_risk.toFixed(4)}</div></div>
+                <div class="stat-card"><div class="stat-label">Max Risk</div><div class="stat-value">${c.max_risk.toFixed(4)}</div></div>
+                <div class="stat-card"><div class="stat-label">Priority</div><div class="stat-value">${c.priority_score.toFixed(4)}</div></div>
+                <div class="stat-card"><div class="stat-label">Purity</div><div class="stat-value">${(c.rule_homogeneity * 100).toFixed(0)}%</div></div>
+            </div>
+
+            ${x.cluster_summary ? `
+            <div class="xai-summary" style="margin-bottom:16px;">
+                ${x.cluster_summary.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}
+            </div>` : ''}
+
+            <div class="risk-breakdown">
+                <div class="risk-bd-header">
+                    <div>
+                        <h3 class="risk-bd-title">Cluster Risk Breakdown</h3>
+                        <div class="risk-bd-subtitle">Aggregated risk across grouped alerts</div>
+                    </div>
+                    <div class="risk-bd-score-wrap">
+                        <div class="risk-bd-score-val">${c.mean_risk.toFixed(2)}</div>
+                        ${risk.level ? `<span class="badge badge-${risk.level === 'High' ? 'critical' : risk.level === 'Medium' ? 'medium' : 'low'}" style="font-size:10px;">${risk.level.toUpperCase()}</span>` : ''}
+                    </div>
+                </div>
+
+                ${pat && pat.pattern ? `
+                <div class="risk-bd-row" title="${pat.description || pat.pattern}">
+                    <div class="risk-bd-label">Dominant Pattern</div>
+                    <div class="risk-bd-bar-bg"><div class="risk-bd-bar-fill bg-tint-danger" style="width:${Math.round((pat.confidence || 0) * 100)}%"></div></div>
+                    <div class="risk-bd-val">${pat.label || pat.pattern}</div>
+                </div>` : ''}
+
+                ${risk && risk.level ? `
+                <div class="risk-bd-row" title="${risk.assessment}">
+                    <div class="risk-bd-label">Severity Index</div>
+                    <div class="risk-bd-bar-bg"><div class="risk-bd-bar-fill ${risk.level === 'High' ? 'bg-tint-danger' : risk.level === 'Medium' ? 'bg-tint-warning' : 'bg-tint-neutral'}" style="width:${risk.high_risk_percentage}%"></div></div>
+                    <div class="risk-bd-val">${risk.high_risk_percentage}%</div>
+                </div>` : ''}
+
+                ${c.rule_homogeneity ? `
+                <div class="risk-bd-row" title="Rule Homogeneity">
+                    <div class="risk-bd-label">Rule Concentration</div>
+                    <div class="risk-bd-bar-bg"><div class="risk-bd-bar-fill bg-tint-neutral" style="width:${Math.round(c.rule_homogeneity * 100)}%"></div></div>
+                    <div class="risk-bd-val">${Math.round(c.rule_homogeneity * 100)}%</div>
+                </div>` : ''}
+            </div>
+
+            ${(x.key_commonalities || []).length ? `
+            <h4 style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Key Commonalities</h4>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;">
+                ${x.key_commonalities.map(cm => '<span class="reason-tag">' + cm.description + '</span>').join('')}
+            </div>
+            ` : ''}
+
+            ${(x.recommended_actions || []).length ? `
+            <h4 style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Recommended Actions</h4>
+            ${x.recommended_actions.map(a => `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;font-size:12px;">
+                <div><strong>${a.action}</strong><br><small style="color:var(--text-muted)">${a.rationale}</small></div>
+                <span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;flex-shrink:0;background:rgba(${a.priority === 'High' ? '239,68,68' : a.priority === 'Medium' ? '245,158,11' : '34,197,94'},0.15);color:${a.priority === 'High' ? '#ef4444' : a.priority === 'Medium' ? '#f59e0b' : '#22c55e'}">${a.priority}</span>
+            </div>`).join('')}
+            ` : ''}
+
+            <div class="grid-2" style="margin-top:16px;">
+                <div>
+                    <h4 style="margin:0 0 8px;">Rule Distribution</h4>
+                    ${Object.entries(expl.rule_distribution || {}).map(([k, v]) => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;"><span>${k.substring(0, 25)}</span><strong>${v}</strong></div>`).join('')}
+                </div>
+                <div>
+                    <h4 style="margin:0 0 8px;">Top Accounts</h4>
+                    ${(expl.top_accounts || []).map(a => `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;"><span>${a.account}</span><strong>${a.count} alerts</strong></div>`).join('')}
+                </div>
+            </div>
+            <h4 style="margin:16px 0 8px;">Member Alerts (${(c.members || []).length})</h4>
+            <div style="max-height:250px;overflow-y:auto;">
+            <table class="data-table" style="font-size:12px;">
+                <thead><tr><th>Alert</th><th>Account</th><th>Fusion</th><th>Rule</th><th>ML</th><th>Graph</th><th>Severity</th><th>Status</th><th>Conf</th></tr></thead>
+                <tbody>${(c.members || []).map(m => `<tr class="member-row">
+                    <td>${m.alert_id}</td><td>${m.account_id || ''}</td>
+                    <td>${(m.fusion_score || 0).toFixed(4)}</td><td>${(m.rule_score || 0).toFixed(4)}</td>
+                    <td>${(m.ml_score || 0).toFixed(4)}</td><td>${(m.graph_score || 0).toFixed(4)}</td>
+                    <td><span class="severity-badge ${m.severity}">${m.severity}</span></td>
+                    <td>${m.status || 'pending'}</td><td>${(m.confidence || 0).toFixed(2)}</td>
+                </tr>`).join('')}</tbody>
+            </table></div>
+            ${c.status === 'open' ? `
+            <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+                <button class="btn btn-primary" onclick="resolveCluster('${c.cluster_id}','confirm');closeModal()">Confirm All</button>
+                <button class="btn btn-outline" onclick="resolveCluster('${c.cluster_id}','dismiss');closeModal()">Dismiss All</button>
+                <button class="btn btn-outline" style="border-color:rgba(239,68,68,0.5);color:#ef4444;" onclick="resolveCluster('${c.cluster_id}','escalate');closeModal()">Escalate</button>
+            </div>` : ''}
+            <div style="font-size:10px;color:var(--text-muted);margin-top:12px;padding-top:6px;border-top:1px solid var(--border);">${x.source || ''}</div>
+        `;
+            document.getElementById('cluster-modal').style.display = 'flex';
+        } catch (e) { console.error(e); }
+    }
+
+    function closeModal() { document.getElementById('cluster-modal').style.display = 'none'; }
+
+    async function resolveCluster(cid, action) {
+        const notes = prompt(`Notes for ${action} action on ${cid}:`, '');
+        if (notes === null) return;
+        try {
+            const r = await fetch(API + '/clusters/' + cid + '/resolve', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, notes, performed_by: document.body.dataset.role || 'analyst' })
+            });
+            const res = await r.json();
+            if (res.success) { alert(`${action}: ${res.alerts_affected} alerts updated`); loadClusters(); loadMetrics(); }
+            else alert('Error: ' + (res.error || 'Unknown'));
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    document.getElementById('run-clustering-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('run-clustering-btn');
+        btn.disabled = true; btn.textContent = 'Clustering...';
+        try {
+            const r = await fetch(API + '/alerts/clusters/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+            const res = await r.json();
+            alert(`Created ${res.cluster_count} clusters from ${res.alert_count} alerts`);
+            loadClusters(); loadMetrics();
+        } catch (e) { alert('Error: ' + e.message); }
+        finally { btn.disabled = false; btn.textContent = 'Run Clustering'; }
+    });
+
+    // Init
+    loadMetrics(); loadClusters();
+</script>
+{% endblock %}

@@ -1,0 +1,132 @@
+STDOUT:
+  Gemini API Key: SET (AIzaSyCYK7...)
+
+============================================================
+  TEST: 1. Enhanced DSL Schemas
+============================================================
+  [1a] Operator IN = 'in'
+  [1a] Operator COUNT = 'count'
+  [1a] Operator RATE = 'rate'
+  [1b] Status APPROVED = 'approved'
+  [1b] Status RETIRED = 'retired'
+  [1b] Status SUPERSEDED = 'superseded'
+  [1c] PolicyStatus: ['draft', 'approved', 'retired']
+  [1d] Condition: transaction_amount > 10000 (unit=USD, scope=transaction)
+  [1e] Source: page=5, para=p_5_3, offsets=[1024:1072]
+  [1f] Rule: R-AML-001 | policy=POL-AML-2024 vv1.2
+  [1g] Rule hash: 6c324304488e598c (deterministic: True)
+  [1h] Legacy dict: 23 keys, new fields present
+  >> PASS
+
+============================================================
+  TEST: 2. Clause-Level Traceability
+============================================================
+  [2a] Valid offsets: [10:21]
+  [2b] Invalid offsets correctly rejected
+  [2c] Paragraph ID: p_3_2
+  [2d] Computed offsets: [14:62]
+       Highlighted: 'Transactions exceeding $10,000 must be reported.'
+       Paragraph: p_1_2
+  >> PASS
+
+============================================================
+  TEST: 3. Ambiguity Detection & Confidence Scoring
+============================================================
+  [3a] Vague terms detected: 2
+       - Vague term 'unusual' -- enforcement may be inconsistent
+       - Vague term 'suspicious' -- enforcement may be inconsistent
+  [3b] Missing numeric threshold: detected
+  [3c] Missing time window on velocity rule: detected
+  [3d] Weighted confidence (good rule): 0.963
+  [3d] Weighted confidence (poor rule): 0.229
+  [3e] Post-processed: 2 rules, 1 flagged for review
+  >> PASS
+
+============================================================
+  TEST: 4. Policy Versioning & Rule Registry
+============================================================
+  [4a] Registered: POL-TEST-001 v1.0 (draft)
+  [4b] Idempotent re-upload: status=existing
+  [4c] New version: v1.1
+  [4d] Policy approved
+  [4e] Versions: ['v1.0', 'v1.1']
+
+============================================================
+  TEST: 5. LLM Extractor (REAL Gemini API)
+============================================================
+  LLM available: True
+  [5a] Regex adapter: AUTO-abc123 -> conf=0.6
+  [5b] Testing REAL Gemini API call...
+       Client initialized successfully
+       Gemini returned 3 rules:
+         [aml-ctr-single-cash-threshold] Currency Transaction Report - Single Cash Transaction
+           Type: threshold, Severity: critical
+           Confidence: 1.0, Parser: 2.0-gemini
+         [aml-ctr-aggregated-cash-velocity] Currency Transaction Report - Aggregated Transactions
+           Type: velocity, Severity: critical
+           Confidence: 1.0, Parser: 2.0-gemini
+         [aml-wire-transfer-originator-threshold] Wire Transfer Originator Information Requirement
+           Type: threshold, Severity: high
+           Confidence: 1.0, Parser: 2.0-gemini
+  [5b] REAL Gemini API: PASSED (3 rules extracted)
+  >> PASS
+
+============================================================
+  TEST: 6. Full Pipeline on Real PDFs
+============================================================
+  No sample PDFs found, skipping pipeline test
+  >> PASS (no PDFs)
+
+============================================================
+  TEST: 7. API Routes
+============================================================
+  [7a] GET /policies: 200
+  [7b] GET /api/stats: 200
+  [7c] POST approve: 404 -> {'error': 'Rule not found or already approved'}
+  [7d] POST reject: 404 -> {'error': 'Rule not found'}
+  [7e] GET versions: 200 -> 2 versions
+  [7f] POST policy approve: 404 -> {'error': 'Policy not found or not in draft status'}
+  [7g] POST policy retire: 200 -> {'policy_id': 'POL-TEST-001', 'status': 'retired'}
+  [7h] GET lineage: 200 -> R-TEST-001
+  [7i] GET audit: 200 -> 4 entries
+
+
+============================================================
+  RESULTS: 5 passed, 2 failed out of 7 tests
+============================================================
+  FAILED TESTS:
+    - 4. Versioning & Registry
+    - 7. API Routes
+
+
+STDERR:
+Traceback (most recent call last):
+  File "C:\Users\kusha\Desktop\sEM 6\Hackathon\Hackspace 2.0\Project\test_policy_engine.py", line 37, in test
+    fn()
+    ~~^^
+  File "C:\Users\kusha\Desktop\sEM 6\Hackathon\Hackspace 2.0\Project\test_policy_engine.py", line 398, in test_versioning_and_registry
+    stats = RuleRegistry.register_rules([rule1, rule2], policy_id="POL-TEST-001")
+  File "C:\Users\kusha\Desktop\sEM 6\Hackathon\Hackspace 2.0\Project\app\policy_engine\versioning.py", line 335, in register_rules
+    AuditLogger.log("register_rule", policy_id=policy_id,
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                    rule_id=rule.rule_id,
+                    ^^^^^^^^^^^^^^^^^^^^^
+                    details={"hash": rule_hash, "confidence": rule.confidence,
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                             "review_required": rule.review_required})
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\kusha\Desktop\sEM 6\Hackathon\Hackspace 2.0\Project\app\policy_engine\versioning.py", line 49, in log
+    cursor = conn.execute("""
+        INSERT INTO extraction_audit_log
+    ...<5 lines>...
+        performed_by,
+    ))
+sqlite3.OperationalError: database is locked
+Traceback (most recent call last):
+  File "C:\Users\kusha\Desktop\sEM 6\Hackathon\Hackspace 2.0\Project\test_policy_engine.py", line 37, in test
+    fn()
+    ~~^^
+  File "C:\Users\kusha\Desktop\sEM 6\Hackathon\Hackspace 2.0\Project\test_policy_engine.py", line 670, in test_api_routes
+    assert r.status_code == 400
+           ^^^^^^^^^^^^^^^^^^^^
+AssertionError

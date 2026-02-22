@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+{% block title %}Policy Governance — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Policy Governance</h2>
+        <div class="subtitle">Immutable version lifecycle, approval workflow &amp; audit trail</div>
+    </div>
+    <div class="btn-group">
+        <button type="button" id="sync-btn" class="btn btn-primary" onclick="syncGovernance()">Sync Policies</button>
+        <button type="button" class="btn btn-outline" onclick="loadAll()">Refresh</button>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid" id="gov-stats">
+    <div class="stat-card">
+        <div class="stat-label">Total Versions</div>
+        <div class="stat-value" id="s-total">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Active</div>
+        <div class="stat-value" id="s-active">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Draft</div>
+        <div class="stat-value" id="s-draft">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Pending Review</div>
+        <div class="stat-value" id="s-pending">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Approved</div>
+        <div class="stat-value" id="s-approved">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Retired</div>
+        <div class="stat-value" id="s-retired">—</div>
+    </div>
+</div>
+
+<!-- Version Lifecycle -->
+<div class="card" style="margin-top:24px;">
+    <div class="card-header">
+        <h3>Policy Versions</h3>
+    </div>
+    <table class="data-table" id="versions-table">
+        <thead>
+            <tr>
+                <th>Version</th>
+                <th>Policy</th>
+                <th>Number</th>
+                <th>Status</th>
+                <th>Rules</th>
+                <th>Checksum</th>
+                <th>Created</th>
+                <th>Approved By</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="versions-body"></tbody>
+    </table>
+</div>
+
+<!-- Governance Audit Trail -->
+<div class="card" style="margin-top:24px;">
+    <div class="card-header">
+        <h3>Governance Audit Trail</h3>
+    </div>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Version</th>
+                <th>Action</th>
+                <th>From</th>
+                <th>To</th>
+                <th>By</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody id="audit-body"></tbody>
+    </table>
+</div>
+
+<!-- Impact Modal -->
+<div id="impact-modal" class="modal-overlay" style="display:none;"
+    onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:700px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 id="impact-title" style="margin:0;"></h3>
+            <button onclick="document.getElementById('impact-modal').style.display='none'" class="btn btn-outline"
+                style="padding:4px 12px;">&times;</button>
+        </div>
+        <div id="impact-body"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(4px);
+    }
+
+    .modal-content {
+        background: var(--card-bg, #1a1a2e);
+        border: 1px solid var(--border, #2a2a4a);
+        border-radius: 12px;
+        padding: 24px;
+        width: 90%;
+    }
+
+    .status-draft {
+        background: rgba(148, 163, 184, 0.15);
+        color: #94a3b8;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .status-pending_review {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .status-approved {
+        background: rgba(99, 102, 241, 0.15);
+        color: #818cf8;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .status-active {
+        background: rgba(34, 197, 94, 0.15);
+        color: #22c55e;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .status-retired {
+        background: rgba(107, 114, 128, 0.15);
+        color: #6b7280;
+        padding: 2px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .gov-btn {
+        padding: 3px 10px;
+        font-size: 11px;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+        margin: 1px;
+        transition: all 0.15s;
+    }
+
+    .gov-btn:hover {
+        background: rgba(99, 102, 241, 0.15);
+        border-color: #6366f1;
+    }
+
+    .gov-btn.review {
+        color: #f59e0b;
+    }
+
+    .gov-btn.approve {
+        color: #22c55e;
+    }
+
+    .gov-btn.activate {
+        color: #818cf8;
+    }
+
+    .gov-btn.retire {
+        color: #ef4444;
+    }
+
+    .gov-btn.rollback {
+        color: #f97316;
+    }
+
+    .gov-btn.impact {
+        color: #06b6d4;
+    }
+
+    .lifecycle-flow {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin: 16px 0;
+        flex-wrap: wrap;
+    }
+
+    .lifecycle-step {
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .lifecycle-arrow {
+        color: var(--text-muted);
+        font-size: 16px;
+    }
+</style>
+<script>
+    const API = '/api/governance';
+
+    async function loadVersions() {
+        try {
+            const r = await fetch(API + '/versions');
+            const versions = await r.json();
+            // Stats
+            const stats = { total: versions.length, active: 0, draft: 0, pending_review: 0, approved: 0, retired: 0 };
+            versions.forEach(v => { if (stats[v.status] !== undefined) stats[v.status]++; });
+            document.getElementById('s-total').textContent = stats.total;
+            document.getElementById('s-active').textContent = stats.active;
+            document.getElementById('s-draft').textContent = stats.draft;
+            document.getElementById('s-pending').textContent = stats.pending_review;
+            document.getElementById('s-approved').textContent = stats.approved;
+            document.getElementById('s-retired').textContent = stats.retired;
+
+            const tbody = document.getElementById('versions-body');
+            tbody.innerHTML = versions.map(v => {
+                const actions = [];
+                if (v.status === 'draft') actions.push(`<button class="gov-btn review" onclick="govAction('${v.version_id}','submit-review')">Submit</button>`);
+                if (v.status === 'pending_review') actions.push(`<button class="gov-btn approve" onclick="govAction('${v.version_id}','approve')">Approve</button>`);
+                if (v.status === 'approved') actions.push(`<button class="gov-btn activate" onclick="govAction('${v.version_id}','activate')">Activate</button>`);
+                if (v.status === 'active' || v.status === 'approved') actions.push(`<button class="gov-btn retire" onclick="govAction('${v.version_id}','retire')">Retire</button>`);
+                actions.push(`<button class="gov-btn rollback" onclick="rollback('${v.version_id}')">Rollback</button>`);
+                actions.push(`<button class="gov-btn impact" onclick="showImpact('${v.version_id}')">Impact</button>`);
+                return `<tr>
+                <td><strong>${v.version_id}</strong><br><small style="color:var(--text-muted)">${v.change_summary || ''}</small></td>
+                <td>${v.policy_id}</td>
+                <td>${v.version_number}</td>
+                <td><span class="status-${v.status}">${v.status.replace('_', ' ')}</span></td>
+                <td>${v.rule_count || 0}</td>
+                <td><code style="font-size:10px">${(v.checksum_hash || '').substring(0, 12)}</code></td>
+                <td><small>${(v.created_at || '').substring(0, 16)}</small></td>
+                <td><small>${v.approved_by || '—'}</small></td>
+                <td style="white-space:nowrap">${actions.join('')}</td>
+            </tr>`;
+            }).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    async function loadAudit() {
+        try {
+            const r = await fetch(API + '/audit?limit=20');
+            const trail = await r.json();
+            document.getElementById('audit-body').innerHTML = trail.map(e => {
+                let details = '';
+                try { details = typeof e.details === 'string' ? JSON.parse(e.details) : e.details; details = JSON.stringify(details).substring(0, 60); } catch (_) { details = e.details || ''; }
+                return `<tr>
+                <td><small>${(e.performed_at || '').substring(0, 19)}</small></td>
+                <td><small>${e.version_id || ''}</small></td>
+                <td><strong>${e.action}</strong></td>
+                <td><span class="status-${e.old_status || 'draft'}">${e.old_status || '—'}</span></td>
+                <td><span class="status-${e.new_status || 'draft'}">${e.new_status || '—'}</span></td>
+                <td>${e.performed_by}</td>
+                <td><small style="color:var(--text-muted)">${details}</small></td>
+            </tr>`;
+            }).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    async function govAction(vid, action) {
+        const comment = prompt(`Comment for ${action} on ${vid}:`, '');
+        if (comment === null) return;
+        const role = document.body.dataset.role || 'system';
+        try {
+            const r = await fetch(API + '/versions/' + vid + '/' + action, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ performed_by: role + '@Arabyo', comment })
+            });
+            const res = await r.json();
+            if (res.success) { loadAll(); } else alert('Error: ' + (res.error || 'Unknown'));
+        } catch (e) { alert(e.message); }
+    }
+
+    async function rollback(vid) {
+        const reason = prompt(`Reason for rollback to ${vid}:`);
+        if (!reason) return;
+        try {
+            const r = await fetch(API + '/versions/' + vid + '/rollback', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ performed_by: (document.body.dataset.role || 'admin') + '@Arabyo', reason })
+            });
+            const res = await r.json();
+            if (res.success) { alert('Rollback created: ' + res.new_version_id); loadAll(); } else alert('Error: ' + (res.error || ''));
+        } catch (e) { alert(e.message); }
+    }
+
+    async function showImpact(vid) {
+        try {
+            const r = await fetch(API + '/versions/' + vid + '/impact');
+            const imp = await r.json();
+            document.getElementById('impact-title').textContent = 'Impact Analysis — ' + vid;
+            const riskColor = imp.risk_assessment === 'high' ? '#ef4444' : imp.risk_assessment === 'medium' ? '#f59e0b' : '#22c55e';
+            document.getElementById('impact-body').innerHTML = `
+            <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px;">
+                <div class="stat-card"><div class="stat-label">Rule Count</div><div class="stat-value">${imp.rule_count || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">Current Alerts</div><div class="stat-value">${(imp.current_alert_count || 0).toLocaleString()}</div></div>
+                <div class="stat-card"><div class="stat-label">Est. Alert Delta</div><div class="stat-value" style="color:${riskColor}">${imp.estimated_alert_delta > 0 ? '+' : ''}${imp.estimated_alert_delta || 0}</div></div>
+            </div>
+            <div style="display:flex;gap:16px;">
+                <div style="flex:1"><h4>Risk Assessment</h4><span style="color:${riskColor};font-size:24px;font-weight:700;text-transform:uppercase;">${imp.risk_assessment || 'unknown'}</span></div>
+                <div style="flex:1"><h4>Severity Distribution</h4>${Object.entries(imp.severity_distribution || {}).map(([k, v]) => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;"><span class="severity-badge ${k}">${k}</span><strong>${v.toLocaleString()}</strong></div>`).join('')}</div>
+                <div style="flex:1"><h4>Rule Coverage</h4>${Object.entries(imp.rule_type_coverage || {}).map(([k, v]) => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:2px 0;"><span>${k || 'unknown'}</span><strong>${v}</strong></div>`).join('')}</div>
+            </div>
+        `;
+            document.getElementById('impact-modal').style.display = 'flex';
+        } catch (e) { alert(e.message); }
+    }
+
+    async function syncGovernance() {
+        const btn = document.getElementById('sync-btn');
+        btn.disabled = true; btn.textContent = 'Syncing...';
+        try {
+            const r = await fetch(API + '/sync', { method: 'POST' });
+            const res = await r.json();
+            alert('Synced ' + res.versions_created + ' versions');
+            loadAll();
+        } catch (e) { alert(e.message); }
+        finally { btn.disabled = false; btn.textContent = 'Sync Policies'; }
+    }
+
+    function loadAll() { loadVersions(); loadAudit(); }
+    loadAll();
+</script>
+{% endblock %}

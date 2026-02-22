@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Rule Set {{ ruleset.id }} — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="{{ url_for('rulesets_page') }}" class="back-link">&larr; Rule Sets</a>
+        <h2>{{ ruleset.id }}</h2>
+        <div class="subtitle">
+            {{ ruleset.ruleset_version }} · {{ (ruleset.rules or [])|length }} rules
+            {% if ruleset.policy_id %} · Policy: <span class="mono">{{ ruleset.policy_id }}</span>{% endif %}
+        </div>
+    </div>
+    <div>
+        {% if user_role == 'admin' and ruleset.status != 'active' %}
+        <button type="button" class="btn btn-primary" id="activateBtn" data-ruleset-id="{{ ruleset.id }}">Activate this rule set</button>
+        {% endif %}
+        <a href="{{ url_for('ruleset_diff_page') }}?id1={{ ruleset.id }}" class="btn btn-outline">Compare with another</a>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Details</h3>
+            <span class="badge {% if ruleset.status == 'active' %}badge-high{% elif ruleset.status == 'draft' %}badge-medium{% else %}badge-low{% endif %}">{{ ruleset.status }}</span>
+        </div>
+        <div class="card-body">
+            <table class="key-value">
+                <tr><td>Policy ID</td><td class="mono">{{ ruleset.policy_id or '—' }}</td></tr>
+                <tr><td>Policy Version</td><td>{{ ruleset.policy_version or '—' }}</td></tr>
+                <tr><td>Ruleset Version</td><td>{{ ruleset.ruleset_version or '—' }}</td></tr>
+                <tr><td>Created</td><td>{{ ruleset.created_at or '—' }}</td></tr>
+                <tr><td>Created by</td><td>{{ ruleset.created_by or '—' }}</td></tr>
+                <tr><td>Alerts (this version)</td><td>{{ ruleset.alert_count or 0 }}</td></tr>
+            </table>
+            {% if ruleset.description %}
+            <p style="margin-top: 12px; color: var(--text-muted);">{{ ruleset.description }}</p>
+            {% endif %}
+            <p style="margin-top: 12px;">
+                <button type="button" class="btn btn-sm btn-outline" id="snapshotBtn" data-ruleset-id="{{ ruleset.id }}">Create snapshot</button>
+                <span id="snapshotStatus" style="margin-left: 8px; font-size: 12px;"></span>
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Rules in this set</h3>
+            <span class="badge badge-medium">{{ (ruleset.rules or [])|length }}</span>
+        </div>
+        <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+            {% if ruleset.rules %}
+            <ul class="rule-list">
+                {% for r in ruleset.rules %}
+                <li>
+                    <span class="mono">{{ r.id }}</span>
+                    <span class="rule-name">{{ r.name }}</span>
+                    <span class="badge badge-low">{{ r.rule_type or '—' }}</span>
+                    <span class="badge badge-medium">{{ r.severity or '—' }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="empty-state">No rules in this set.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/rulesets.js') }}"></script>
+<script>
+(function() {
+    var ab = document.getElementById('activateBtn');
+    if (ab) ab.addEventListener('click', function() {
+        var id = this.getAttribute('data-ruleset-id');
+        if (!id) return;
+        fetch('/api/rulesets/' + encodeURIComponent(id) + '/activate', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.error) alert(d.error);
+                else { alert('Activated.'); window.location.reload(); }
+            })
+            .catch(function() { alert('Request failed'); });
+    });
+    var sb = document.getElementById('snapshotBtn');
+    if (sb) sb.addEventListener('click', function() {
+        var id = this.getAttribute('data-ruleset-id');
+        var status = document.getElementById('snapshotStatus');
+        if (!id) return;
+        status.textContent = 'Creating...';
+        fetch('/api/rulesets/' + encodeURIComponent(id) + '/snapshot', { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                status.textContent = d.rules_snapshotted !== undefined ? 'Snapshot: ' + d.rules_snapshotted + ' rules' : (d.error || 'Done');
+            })
+            .catch(function() { status.textContent = 'Failed'; });
+    });
+})();
+</script>
+{% endblock %}

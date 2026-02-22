@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+{% block title %}Alert #{{ alert.id }} — Arabyo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h2>Alert #{{ alert.id }}</h2>
+        <div class="subtitle">Account: <span class="mono">{{ alert.account_id }}</span></div>
+    </div>
+    <div class="btn-group">
+        <a href="/api/alerts/{{ alert.id }}/report" target="_blank" class="btn btn-sm btn-confirm"
+            data-role-show="admin,analyst,risk_manager">Download Report (PDF)</a>
+        <a href="/alerts?role={{ user_role }}" class="btn btn-sm">&larr; Back</a>
+    </div>
+</div>
+
+<!-- Panel 1: Risk Summary -->
+<div class="stats-grid" style="grid-template-columns: repeat(6, 1fr);">
+    <div class="stat-card">
+        <div class="stat-label">Fusion Score</div>
+        <div class="stat-value"
+            style="color: {% if alert.fusion_score > 0.7 %}var(--severity-critical){% elif alert.fusion_score > 0.4 %}var(--severity-high){% else %}var(--text-primary){% endif %}">
+            {{ "%.3f"|format(alert.fusion_score) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Rule Engine</div>
+        <div class="stat-value">{{ "%.3f"|format(alert.rule_score) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">ML Model</div>
+        <div class="stat-value">{{ "%.3f"|format(alert.ml_score) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Graph Analysis</div>
+        <div class="stat-value">{{ "%.3f"|format(alert.graph_score) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Severity</div>
+        <div class="stat-value" style="font-size: 16px;"><span class="badge badge-{{ alert.severity }}">{{
+                alert.severity }}</span></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Status</div>
+        <div class="stat-value" style="font-size: 16px;"><span class="badge badge-{{ alert.status }}">{{ alert.status
+                }}</span></div>
+    </div>
+</div>
+
+<!-- AI Explanation Panel -->
+<div class="card" id="ai-explanation" style="margin-bottom: 20px;">
+    <div class="card-header">
+        <h3>AI Investigation Summary</h3>
+        <span class="badge badge-medium" id="ai-confidence">Loading...</span>
+    </div>
+    <div class="card-body" id="ai-explanation-body" style="padding: 16px;">
+        <div style="color:var(--text-muted);font-size:13px;">Generating explanation...</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Left Column: Explainability -->
+    <div>
+        <!-- Panel 2: Policy Trace -->
+        {% if rules %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Policy Rules Triggered</h3>
+                <span class="badge badge-medium">{{ rules|length }} rules</span>
+            </div>
+            <div class="card-body">
+                {% for rule in rules %}
+                <div class="rule-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="rule-type">{{ rule.rule_type }} <span
+                                class="badge badge-{{ rule.severity or 'medium' }}">{{ rule.severity or 'medium'
+                                }}</span></div>
+                        {% if rule.confidence is defined and rule.confidence %}
+                        <div class="confidence-meter">
+                            <span class="confidence-bar"><span class="confidence-fill"
+                                    style="width: {{ (rule.confidence * 100)|int }}%"></span></span>
+                            {{ "%.0f"|format(rule.confidence * 100) }}%
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="rule-name">{{ rule.name }}</div>
+                    {% if rule.source_text %}
+                    <div class="source-clause">{{ rule.source_text[:300] }}{% if rule.source_text|length > 300 %}…{%
+                        endif %}</div>
+                    {% endif %}
+                    <div class="source-meta">
+                        {{ rule.source_document }} · Page {{ rule.source_page }}
+                        · <span class="badge badge-{{ rule.gov_status or 'draft' }}"
+                            style="font-size: 10px; padding: 1px 4px;">{{ rule.gov_status or 'draft' }}</span>
+                        <span style="color: var(--text-muted); font-size: 10px;">({{ rule.gov_version_id or 'Standalone'
+                            }})</span>
+                        {% if rule.review_required %} · <span class="flag-review">⚠ Review Required</span>{% endif %}
+                        {% if rule.ambiguous %} · <span class="flag-ambiguous">◇ Ambiguous</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Panel 3: Detection Explanation -->
+        {% if alert.explanation_data %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Detection Explanation</h3>
+            </div>
+            <div class="card-body">
+                {% if alert.explanation_data.rule_evidence %}
+                {% for ev in alert.explanation_data.rule_evidence[:5] %}
+                <div class="rule-card">
+                    <div class="rule-type">{{ ev.rule_name if ev.rule_name else ev.rule_id }}</div>
+                    {% if ev.evidence %}
+                    <div
+                        style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; display: flex; gap: 16px; flex-wrap: wrap;">
+                        {% for k, v in ev.evidence.items() %}
+                        <span>{{ k }}: <strong class="mono">{{ v }}</strong></span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Panel 4: Score Visualization -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Risk Score Breakdown</h3>
+            </div>
+            <div class="card-body">
+                <div id="ai-risk-breakdown-body">
+                    <div style="color:var(--text-muted); padding:20px; text-align:center;">Loading risk breakdown...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Actions + Evidence -->
+    <div>
+        <!-- Panel 5: Decision Panel (role-gated) -->
+        {% if alert.status == 'pending' %}
+        <div class="card" data-role-hide="auditor">
+            <div class="card-header">
+                <h3>Analyst Decision</h3>
+            </div>
+            <div class="card-body">
+                <div class="decision-panel">
+                    <form action="/alerts/{{ alert.id }}/review?role={{ user_role }}" method="POST">
+                        <input type="hidden" name="role" value="{{ user_role }}">
+                        {% if auth_enabled and current_user %}
+                        <div class="form-group" style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+                            Action will be recorded as: <span class="mono">{{ current_user.email or current_user.name
+                                }}</span>
+                        </div>
+                        {% else %}
+                        <div class="form-group">
+                            <label>Reviewer</label>
+                            <input type="text" name="reviewer" class="form-control" placeholder="Your name"
+                                value="{{ user_role }}">
+                        </div>
+                        {% endif %}
+                        <div class="form-group">
+                            <label>Investigation Notes</label>
+                            <textarea name="notes" class="form-control" rows="3"
+                                placeholder="Document findings…"></textarea>
+                        </div>
+                        <div class="decision-actions">
+                            <button type="submit" name="action" value="confirm" class="btn btn-reject">
+                                &#10003; Confirm Violation
+                            </button>
+                            <button type="submit" name="action" value="dismiss" class="btn btn-confirm">
+                                &#10005; Dismiss
+                            </button>
+                            <button type="submit" name="action" value="escalate" class="btn btn-escalate"
+                                data-role-show="analyst,admin">
+                                &uarr; Escalate
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-header">
+                <h3>Review Completed</h3>
+            </div>
+            <div class="card-body">
+                <div style="font-size: 12px;">
+                    <div style="margin-bottom: 6px;"><span style="color: var(--text-muted);">Action:</span> <strong>{{
+                            alert.review_action }}</strong></div>
+                    <div style="margin-bottom: 6px;"><span style="color: var(--text-muted);">Performed by:</span> <span
+                            class="mono">{{ alert.reviewed_by }}</span></div>
+                    <div style="margin-bottom: 6px;"><span style="color: var(--text-muted);">Date:</span> <span
+                            class="mono">{{ alert.reviewed_at }}</span></div>
+                    {% if alert.review_notes %}
+                    <div><span style="color: var(--text-muted);">Notes:</span> {{ alert.review_notes }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Review Trail: who did what when -->
+        {% if review_history and review_history|length > 0 %}
+        <div class="card" style="margin-top: 12px;">
+            <div class="card-header">
+                <h3>Review Trail</h3>
+                <span class="badge badge-medium">{{ review_history|length }} action(s)</span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date & Time</th>
+                            <th>Performed By</th>
+                            <th>Action</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in review_history %}
+                        <tr>
+                            <td class="mono" style="font-size: 10px;">{{ entry.performed_at }}</td>
+                            <td class="mono" style="font-size: 11px;">{{ entry.performed_by }}</td>
+                            <td><span
+                                    class="badge badge-{{ 'critical' if entry.action == 'confirm' else 'low' if entry.action == 'dismiss' else 'medium' }}">{{
+                                    entry.action }}</span></td>
+                            <td style="font-size: 11px;">{{ entry.notes or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+
+        <!-- Auditor override notice -->
+        <div data-role-show="auditor"
+            style="font-size: 10px; color: var(--text-muted); padding: 8px 0; text-transform: uppercase; letter-spacing: 1px;">
+            Read-only mode — Auditor access
+        </div>
+
+        <!-- Admin override -->
+        {% if alert.status != 'pending' %}
+        <div data-role-show="admin" style="margin-bottom: 12px;">
+            <form action="/alerts/{{ alert.id }}/review?role={{ user_role }}" method="POST" style="display: inline;">
+                <input type="hidden" name="role" value="{{ user_role }}">
+                <input type="hidden" name="reviewer" value="admin-override">
+                <input type="hidden" name="notes" value="Admin override">
+                <button type="submit" name="action" value="confirm" class="btn btn-sm btn-reject">Admin Override &rarr;
+                    Confirm</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <!-- Evidence Transactions -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Evidence Transactions ({{ transactions|length }})</h3>
+            </div>
+            <div class="card-body" style="padding: 0; max-height: 400px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Amount</th>
+                            <th>Format</th>
+                            <th>Flag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for txn in transactions %}
+                        <tr>
+                            <td class="mono" style="font-size: 10px;">{{ txn.timestamp }}</td>
+                            <td class="mono" style="font-size: 10px;">{{ txn.from_bank }}/{{ txn.from_account[:8] }}
+                            </td>
+                            <td class="mono" style="font-size: 10px;">{{ txn.to_bank }}/{{ txn.to_account[:8] }}</td>
+                            <td class="mono"><strong>${{ "{:,.2f}".format(txn.amount_paid) }}</strong></td>
+                            <td style="font-size: 10px;">{{ txn.payment_format }}</td>
+                            <td>
+                                {% if txn.is_laundering %}
+                                <span class="badge badge-critical">YES</span>
+                                {% else %}
+                                <span class="badge badge-low">NO</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Monochrome score bar chart
+    const ctx = document.getElementById('scoreChart');
+    if (ctx) {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Rule Engine', 'ML Model', 'Graph Analysis', 'Fusion'],
+                datasets: [{
+                    label: 'Score',
+                    data: [
+                        {{ alert.rule_score }},
+                {{ alert.ml_score }},
+                        {{ alert.graph_score }},
+    { { alert.fusion_score } }
+                    ],
+    backgroundColor: [
+        'rgba(136, 136, 136, 0.3)',
+        'rgba(136, 136, 136, 0.3)',
+        'rgba(136, 136, 136, 0.3)',
+        'rgba(232, 232, 232, 0.4)',
+    ],
+        borderColor: ['#888', '#888', '#888', '#e8e8e8'],
+            borderWidth: 1,
+                borderRadius: 2,
+                }]
+            },
+    options: {
+        responsive: true,
+            maintainAspectRatio: false,
+                scales: {
+            y: {
+                beginAtZero: true,
+                    max: 1,
+                        ticks: { color: '#555', font: { size: 10, family: 'Inter' } },
+                grid: { color: 'rgba(255,255,255,0.04)' },
+                border: { color: 'rgba(255,255,255,0.08)' },
+            },
+            x: {
+                ticks: { color: '#555', font: { size: 10, family: 'Inter' } },
+                grid: { display: false },
+                border: { color: 'rgba(255,255,255,0.08)' },
+            }
+        },
+        plugins: { legend: { display: false } }
+    }
+        });
+    }
+</script>
+<style>
+    .xai-summary {
+        font-size: 13px;
+        line-height: 1.7;
+        color: var(--text-secondary);
+        margin-bottom: 16px;
+        padding: 12px;
+        background: rgba(99, 102, 241, 0.06);
+        border-left: 3px solid #6366f1;
+        border-radius: 0 8px 8px 0;
+    }
+
+    .xai-driver {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 6px 0;
+        font-size: 12px;
+    }
+
+    .xai-driver-bar {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--border);
+        flex: 1;
+        max-width: 120px;
+        overflow: hidden;
+    }
+
+    .xai-driver-fill {
+        height: 100%;
+        border-radius: 3px;
+    }
+
+    .xai-section {
+        margin-top: 14px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border);
+    }
+
+    .xai-section h4 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-muted);
+        margin: 0 0 8px;
+    }
+
+    .xai-action {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        margin-bottom: 6px;
+        font-size: 12px;
+    }
+
+    .xai-action-pri {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .xai-action-pri.High {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+    }
+
+    .xai-action-pri.Medium {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+    }
+
+    .xai-action-pri.Low {
+        background: rgba(34, 197, 94, 0.15);
+        color: #22c55e;
+    }
+
+    .xai-context {
+        font-size: 12px;
+        color: var(--text-secondary);
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 6px;
+        margin-bottom: 6px;
+    }
+
+    .xai-source {
+        font-size: 10px;
+        color: var(--text-muted);
+        margin-top: 12px;
+        padding-top: 6px;
+        border-top: 1px solid var(--border);
+    }
+</style>
+<script>
+    (async function () {
+        var xaiId = "{{ alert.id }}";
+        try {
+            var r = await fetch('/api/alerts/' + xaiId + '/explain');
+            var x = await r.json();
+            if (x.error) {
+                document.getElementById('ai-explanation-body').innerHTML = '<div style="color:var(--text-muted)">' + x.error + '</div>';
+                return;
+            }
+            var confEl = document.getElementById('ai-confidence');
+            var confColor = x.confidence === 'High' ? 'critical' : x.confidence === 'Medium' ? 'medium' : 'low';
+            confEl.className = 'badge badge-' + confColor;
+            confEl.textContent = x.confidence + ' Confidence \u2022 ' + x.priority;
+            var html = '';
+            html += '<div class="xai-summary" style="margin-bottom:16px;">' + x.human_summary + '</div>';
+
+            if (x.risk_drivers && x.risk_drivers.length) {
+                var rHtml = '<div class="risk-breakdown" style="margin-bottom:0; border:none; padding:0; background:transparent;">';
+
+                x.risk_drivers.slice(0, 5).forEach(function (d) {
+                    var pct = Math.min(100, d.contribution * 300);
+                    var tint = '';
+                    if (d.contribution > 0.3) tint = 'bg-tint-danger';
+                    else if (d.contribution > 0.15) tint = 'bg-tint-warning';
+                    else tint = 'bg-tint-neutral';
+
+                    var label = typeof d.factor === 'string' ? d.factor : JSON.stringify(d.factor);
+                    if (label.length > 25) label = label.substring(0, 22) + '...';
+
+                    rHtml += '<div class="risk-bd-row" title="' + (typeof d.factor === 'string' ? d.factor : '') + '">';
+                    rHtml += '  <div class="risk-bd-label">' + label + '</div>';
+                    rHtml += '  <div class="risk-bd-bar-bg"><div class="risk-bd-bar-fill ' + tint + '" style="width:' + pct + '%"></div></div>';
+                    rHtml += '  <div class="risk-bd-val">+' + d.contribution.toFixed(2) + '</div>';
+                    rHtml += '</div>';
+                });
+                rHtml += '</div>';
+                var rbEl = document.getElementById('ai-risk-breakdown-body');
+                if (rbEl) rbEl.innerHTML = rHtml;
+            }
+
+            if (x.graph_context && x.graph_context.has_graph_risk) {
+                html += '<div class="xai-section"><h4>Network Context</h4><div class="xai-context">' + x.graph_context.summary + '</div></div>';
+            }
+            if (x.anomaly_context && x.anomaly_context.has_anomaly) {
+                html += '<div class="xai-section"><h4>Anomaly Context</h4><div class="xai-context">' + x.anomaly_context.summary + '</div></div>';
+            }
+            if (x.recommended_actions && x.recommended_actions.length) {
+                html += '<div class="xai-section"><h4>Recommended Next Actions</h4>';
+                x.recommended_actions.forEach(function (a) {
+                    html += '<div class="xai-action"><div><strong>' + a.action + '</strong><br><small style="color:var(--text-muted)">' + a.rationale + '</small></div>'
+                        + '<span class="xai-action-pri ' + a.priority + '">' + a.priority + '</span></div>';
+                });
+                html += '</div>';
+            }
+            html += '<div class="xai-source">' + x.source + '</div>';
+            document.getElementById('ai-explanation-body').innerHTML = html;
+        } catch (e) {
+            document.getElementById('ai-explanation-body').innerHTML = '<div style="color:var(--text-muted)">Failed to load ML explanation: ' + e + '</div>';
+        }
+    })();
+</script>
+{% endblock %}
